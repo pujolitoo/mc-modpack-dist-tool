@@ -63,11 +63,34 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+
       - name: Configure update URL
         env:
           UPDATE_URL: https://github.com/${{ github.repository }}/releases/latest/download/${{ matrix.asset }}
+        shell: bash
         run: |
-          python -c "import os,re,pathlib; p=pathlib.Path('launcher.toml'); s=p.read_text(encoding='utf-8'); s,n=re.subn(r'(?m)^update_url\s*=.*$', 'update_url = \"'+os.environ['UPDATE_URL']+'\"', s, count=1); assert n == 1, 'update_url not found'; p.write_text(s, encoding='utf-8')"
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("launcher.toml")
+          content = path.read_text(encoding="utf-8")
+
+          updated, count = re.subn(
+              r'(?m)^(\s*update_url\s*=\s*).*$',
+              lambda match: match.group(1) + '"' + os.environ["UPDATE_URL"] + '"',
+              content,
+              count=1,
+          )
+
+          if count != 1:
+              raise RuntimeError("Could not find update_url in launcher.toml")
+
+          path.write_text(updated, encoding="utf-8")
+          print("Updated launcher.toml with the release URL.")
+          PY
+
 
       - name: Build launcher
         run: cargo build --release ${{ matrix.args }}
