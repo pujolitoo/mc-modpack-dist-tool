@@ -42,7 +42,7 @@ url = ""
 #   path = "packs/mi-pack.zip"      → en una subcarpeta
 #   path = "../exports/mi-pack.zip" → en la carpeta superior
 #   path = "C:/Packs/mi-pack.zip"   → ruta absoluta
-#path = "modpack.zip"
+path = "modpack.zip"
 
 # If both are set, `url` takes precedence, and the embedded ZIP is used as a fallback if there is no
 # connection and no cached copy exists yet.
