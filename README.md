@@ -36,9 +36,3 @@ published file has been replaced; if so, it downloads it, replaces itself and re
 using the SAME filename (Dropbox's **Replace** option) so the shared link does not change. Dropbox may limit
 traffic from a single public link if you have many players.
 
-## Error "failed to find tool \"cc\"" when building
-A C compiler is missing (required by dependencies such as aws-lc-sys or ring).
-  macOS:  xcode-select --install
-  Debian/Ubuntu:  sudo apt install build-essential pkg-config libxkbcommon-dev libwayland-dev libx11-dev libssl-dev
-Cross-compiling for Linux/macOS from Windows requires cross-compilation tools. Use
-`.github/workflows/build.yml` (GitHub Actions) to obtain binaries for each operating system.
