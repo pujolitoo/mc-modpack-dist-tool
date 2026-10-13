@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Modpack Forge</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⛏️</text></svg>">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{--bg:#eceeea;--panel:#f8f9f6;--panel2:#e3e6e0;--line:#cdd2c9;--text:#1c2227;--mute:#5d6872;--acc:#17806b;--acc-t:#fff;--warn:#a8680a;--bad:#b3362b;--r:6px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15191d;--panel:#1d2329;--panel2:#272f37;--line:#35404a;--text:#e5eaee;--mute:#8d9aa5;--acc:#3fb8a0;--acc-t:#0d1a17;--warn:#e0a43a;--bad:#ef7b6e}}
+:root[data-theme="dark"]{--bg:#15191d;--panel:#1d2329;--panel2:#272f37;--line:#35404a;--text:#e5eaee;--mute:#8d9aa5;--acc:#3fb8a0;--acc-t:#0d1a17;--warn:#e0a43a;--bad:#ef7b6e}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*::before,*::after{box-sizing:inherit}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif}
+h1,h2,h3{font-family:"Bricolage Grotesque","IBM Plex Sans",sans-serif;margin:0;line-height:1.15}
+header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:22px}
+header .sp{flex:1}
+main{display:grid;grid-template-columns:290px minmax(0,1fr) minmax(0,420px);gap:16px;padding:16px 20px;align-items:start}
+@media (max-width:1100px){main{grid-template-columns:1fr}}
+section.p{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+section.p h2{font-size:17px;margin-bottom:12px}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 3px}
+input,select,textarea,button{font:inherit;color:inherit}
+input,select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px}
+textarea{resize:vertical;min-height:60px}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+button{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r);padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--acc)}
+button.pri{background:var(--acc);color:var(--acc-t);border-color:var(--acc);font-weight:600}
+button.sm{padding:3px 8px;font-size:13px}
+button.dng:hover{border-color:var(--bad);color:var(--bad)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row>input,.row>select{flex:1;min-width:120px;width:auto}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px;flex-wrap:wrap}
+.tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;padding:8px 12px;color:var(--mute)}
+.tabs button[aria-selected=true]{color:var(--text);border-bottom-color:var(--acc);font-weight:600}
+.pane[hidden]{display:none}
+.note{font-size:13px;color:var(--mute);margin:8px 0}
+.note.w{color:var(--warn)}
+.res{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line);align-items:flex-start}
+.res img,.ic{width:44px;height:44px;border-radius:var(--r);background:var(--panel2);flex:none;object-fit:cover;display:grid;place-items:center;font-size:12px;color:var(--mute)}
+.res .b{flex:1;min-width:0}
+.res .t{font-weight:600}
+.res .d{font-size:13px;color:var(--mute);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.tag{display:inline-block;font-size:12px;padding:0 6px;border:1px solid var(--line);border-radius:99px;color:var(--mute);margin-right:4px}
+.tag.mr{color:#1bd96a;border-color:currentColor}.tag.cf{color:#f16436;border-color:currentColor}.tag.lo{color:var(--warn);border-color:currentColor}
+#mods .res{align-items:center}
+#mods .off{opacity:.5}
+.drop{border:2px dashed var(--line);border-radius:var(--r);padding:26px;text-align:center;color:var(--mute)}
+.drop.over{border-color:var(--acc);color:var(--text)}
+.stat{display:flex;gap:14px;font-size:13px;color:var(--mute);margin-bottom:8px;flex-wrap:wrap}
+.stat b{color:var(--text)}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--text);color:var(--bg);padding:9px 16px;border-radius:var(--r);max-width:90vw;display:none;z-index:9}
+.chk{display:flex;gap:8px;align-items:center;margin:8px 0;color:var(--text);font-size:14px}
+.chk input{width:auto}
+.empty{color:var(--mute);padding:24px 8px;text-align:center}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--r);padding:16px;width:min(560px,94vw);max-height:80vh}
+fieldset{border:1px solid var(--line);border-radius:var(--r);margin:10px 0;padding:8px 12px}
+fieldset legend{padding:0 6px;font-weight:600}
+.col{display:grid;gap:16px;min-width:0}
+button:disabled{opacity:.5;cursor:default}
+button:disabled:hover{border-color:var(--line)}
+#chgList{max-height:38vh;overflow-y:auto}
+.chg{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line)}
+.chg .b{flex:1;min-width:0;font-size:13px}
+.chg .d{color:var(--mute);word-break:break-word}
+.k{flex:none;width:22px;height:22px;border-radius:4px;display:grid;place-items:center;font-weight:700;font-size:13px;border:1px solid currentColor}
+.k.add{color:var(--acc)}.k.rem{color:var(--bad)}.k.upd{color:var(--warn)}.k.set{color:var(--mute)}
+.tag.new{color:var(--acc);border-color:currentColor}.tag.mod{color:var(--warn);border-color:currentColor}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+#verBody{max-height:56vh;overflow-y:auto;margin:10px 0}
+#verBody .res.cur{background:var(--panel2);padding-left:8px;padding-right:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⛏️ Modpack Forge</h1>
+  <span class="note" style="margin:0">Crea modpacks y expórtalos como JSON para tu lanzador</span>
+  <span class="sp"></span>
+  <button id="btnTheme" class="sm">Tema</button>
+  <button id="btnReset" class="sm dng">Vaciar todo</button>
+</header>
+
+<main>
+  <!-- BIBLIOTECA + AJUSTES DEL PACK -->
+  <div class="col">
+  <section class="p" id="lib">
+    <h2>Mis modpacks</h2>
+    <label for="packSel">Modpack activo</label>
+    <select id="packSel"></select>
+    <div class="row" style="margin-top:8px"><button class="sm pri" id="packNew">Nuevo</button><button class="sm" id="packDup">Duplicar</button><button class="sm dng" id="packDel">Eliminar</button></div>
+    <p class="note" id="packNote"></p>
+  </section>
+  <section class="p">
+    <h2>Modpack</h2>
+    <label for="pId">ID del modpack</label>
+    <div class="row"><input id="pId" readonly spellcheck="false" style="font:12px ui-monospace,Consolas,monospace"><button class="sm" id="idCopy">Copiar</button><button class="sm" id="idNew">Nuevo</button></div>
+    <label for="pName">Nombre</label><input id="pName" placeholder="Mi modpack">
+    <label for="pVer">Versión del pack</label><input id="pVer" placeholder="1.0.0">
+    <label for="pAuthor">Autor</label><input id="pAuthor">
+    <label for="pDesc">Descripción</label><textarea id="pDesc"></textarea>
+    <label for="mc">Versión de Minecraft</label>
+    <input id="mc" list="mcList" placeholder="1.20.1"><datalist id="mcList"></datalist>
+    <label for="loader">Mod loader</label>
+    <select id="loader"><option value="fabric">Fabric</option><option value="forge">Forge</option><option value="neoforge">NeoForge</option><option value="quilt">Quilt</option></select>
+    <label for="lver">Versión del loader</label>
+    <input id="lver" list="lvList" placeholder="0.15.11"><datalist id="lvList"></datalist>
+    <label for="java">Java mínimo</label>
+    <input id="java" type="number" min="8" placeholder="17">
+    <label for="ram">RAM recomendada (MB)</label>
+    <input id="ram" type="number" min="1024" step="512" placeholder="4096">
+
+    <details style="margin-top:14px">
+      <summary>API de CurseForge</summary>
+      <label for="cfKey">API key</label><input id="cfKey" type="password" placeholder="$2a$10$...">
+      <label for="cfBase">URL base / proxy</label><input id="cfBase" placeholder="https://api.curseforge.com">
+      <p class="note w">CurseForge bloquea las peticiones directas desde el navegador (CORS). Para buscar y resolver mods necesitas un proxy que añada los cabeceras CORS. Se guarda solo en este navegador.</p>
+    </details>
+  </section>
+  </div>
+
+  <!-- AÑADIR MODS -->
+  <section class="p">
+    <h2>Añadir mods</h2>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-t="mr" aria-selected="true">Modrinth</button>
+      <button role="tab" data-t="cf" aria-selected="false">CurseForge</button>
+      <button role="tab" data-t="jar" aria-selected="false">Archivos JAR</button>
+      <button role="tab" data-t="imp" aria-selected="false">Importar</button>
+    </div>
+
+    <div class="pane" id="t-mr">
+      <div class="row"><input id="mrQ" placeholder="Buscar en Modrinth (sodium, jei, create...)"><button class="pri" id="mrGo">Buscar</button></div>
+      <label class="chk"><input type="checkbox" id="autoDeps" checked> Añadir dependencias obligatorias automáticamente</label>
+      <p class="note">Se filtra por la versión de Minecraft y el loader del modpack.</p>
+      <div id="mrRes"></div>
+    </div>
+
+    <div class="pane" id="t-cf" hidden>
+      <div class="row"><input id="cfQ" placeholder="Buscar en CurseForge"><button class="pri" id="cfGo">Buscar</button></div>
+      <p class="note">Requiere API key (panel izquierdo) y un proxy con CORS.</p>
+      <div id="cfRes"></div>
+    </div>
+
+    <div class="pane" id="t-jar" hidden>
+      <div class="drop" id="drop">Arrastra aquí archivos .jar o <button class="sm" id="pickJar">elige archivos</button></div>
+      <input type="file" id="jarIn" accept=".jar" multiple hidden>
+      <p class="note">Se calculan SHA-1 y SHA-256 y se lee el id, nombre y versión del mod desde el propio JAR. Al exportar puedes incluirlos en un ZIP junto al JSON, o asignarles una URL de descarga propia.</p>
+    </div>
+
+    <div class="pane" id="t-imp" hidden>
+      <h3 style="font-size:15px">Modpack de CurseForge (.zip)</h3>
+      <div class="drop" id="dropCf">Arrastra el ZIP exportado desde la app de CurseForge o <button class="sm" id="pickCf">elígelo</button></div>
+      <input type="file" id="cfIn" accept=".zip" hidden>
+      <p class="note">Lee <code>manifest.json</code>: versión de Minecraft, loader y lista de mods (projectID / fileID). Si hay API key, se resuelven nombres, URLs y hashes. Los JAR dentro de <code>overrides/mods</code> se añaden como locales.</p>
+      <h3 style="font-size:15px;margin-top:18px">Solo overrides</h3>
+      <div class="row"><button id="pickOv">Importar solo overrides (.zip)</button></div>
+      <input type="file" id="ovIn" accept=".zip" hidden>
+      <p class="note">Acepta un ZIP de CurseForge (usa su carpeta <code>overrides</code>) o un ZIP normal con carpetas como <code>config</code>, <code>kubejs</code> o <code>resourcepacks</code>. No toca los mods.</p>
+      <h3 style="font-size:15px;margin-top:18px">JSON de Modpack Forge</h3>
+      <div class="row"><button id="pickJson">Importar .json</button></div>
+      <input type="file" id="jsonIn" accept=".json,application/json" hidden>
+    </div>
+  </section>
+
+  <!-- CAMBIOS + LISTA -->
+  <div class="col">
+  <section class="p" id="chg">
+    <h2>Cambios pendientes <span class="tag" id="chgCount">0</span></h2>
+    <div class="row" style="margin-bottom:8px"><button class="pri" id="chgApply" disabled>Aplicar cambios</button><button class="dng" id="chgDiscard" disabled>Descartar todo</button></div>
+    <div id="chgList" aria-live="polite"></div>
+  </section>
+  <section class="p">
+    <h2>Contenido del pack</h2>
+    <div class="stat" id="stat"></div>
+    <div class="row" style="margin-bottom:8px">
+      <button class="pri" id="expJson">Exportar JSON</button>
+      <button id="expZip">Exportar ZIP (JSON + JARs)</button>
+    </div>
+    <p class="note" id="expNote" style="margin-top:0"></p>
+    <input id="filter" placeholder="Filtrar mods…" style="margin-bottom:6px">
+    <div id="mods"></div>
+  </section>
+  </div>
+</main>
+<dialog id="impDlg">
+  <h2 id="impTitle" style="font-size:17px"></h2>
+  <p class="note" id="impInfo"></p>
+  <p class="note w" id="impWarn" hidden></p>
+  <fieldset id="impTargetG"><legend>Destino</legend>
+    <label class="chk"><input type="radio" name="impT" value="cur" checked> En el modpack actual</label>
+    <label class="chk"><input type="radio" name="impT" value="new"> En un modpack nuevo (no toca el actual)</label>
+  </fieldset>
+  <fieldset id="impModsG"><legend>Mods</legend>
+    <p class="note" id="impModsTxt" style="margin-top:0"></p>
+    <label class="chk"><input type="radio" name="impM" value="add" checked> Añadir a los actuales (se omiten los duplicados)</label>
+    <label class="chk"><input type="radio" name="impM" value="replace"> Reemplazar todos los mods actuales</label>
+  </fieldset>
+  <fieldset id="impOvG"><legend>Overrides (carpetas extra)</legend>
+    <p class="note" id="impOvTxt" style="margin-top:0"></p>
+    <label class="chk"><input type="radio" name="impO" value="add" checked> Añadir a los actuales (si una ruta existe, se sobrescribe)</label>
+    <label class="chk"><input type="radio" name="impO" value="replace"> Reemplazar todos los overrides actuales</label>
+  </fieldset>
+  <fieldset id="impPackG"><legend>Ajustes del pack</legend>
+    <label class="chk"><input type="checkbox" id="impPack"> Usar nombre, versión de Minecraft y loader del ZIP</label>
+  </fieldset>
+  <div class="row" style="justify-content:flex-end"><button id="impCancel">Cancelar</button><button class="pri" id="impOk">Importar</button></div>
+</dialog>
+<dialog id="verDlg">
+  <h2 id="verTitle" style="font-size:17px"></h2>
+  <label class="chk" style="margin:6px 0 0"><input type="checkbox" id="verAll"> Mostrar también versiones de otras versiones de Minecraft</label>
+  <div id="verBody"></div>
+  <div class="row" style="justify-content:flex-end"><button id="verClose">Cerrar</button></div>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const MR="https://api.modrinth.com/v2";
+const CF_LOADER={forge:1,fabric:4,quilt:5,neoforge:6};
+const CF_LOADER_REV={1:"forge",4:"fabric",5:"quilt",6:"neoforge"};
+
+let mods=[];                 // lista de mods del pack
+const jarBlobs=new Map();    // id -> File/Blob de JARs locales
+const overrideEntries=new Map(); // ruta relativa -> entrada JSZip con el contenido
+let overrideFiles=[];        // rutas de overrides no-jar
+
+const uid=()=>crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2);
+
+/* ---------- Estado aplicado (base) vs borrador (lo que ves) ---------- */
+const SET=["pId","pName","pVer","pAuthor","pDesc","mc","loader","lver","java","ram"];
+const SET_LABEL={pId:"ID del modpack",pName:"Nombre",pVer:"Versión del pack",pAuthor:"Autor",pDesc:"Descripción",mc:"Minecraft",loader:"Loader",lver:"Versión del loader",java:"Java mínimo",ram:"RAM recomendada (MB)"};
+let library={activeId:null,packs:{}};   // todos los modpacks: libId -> estado completo (el activo se vuelca desde las variables globales)
+let base={settings:{},mods:[],ovFiles:[],ovEntries:new Map()};   // último estado aplicado: es lo que se exporta
+let changes=[];
+const clone=o=>JSON.parse(JSON.stringify(o));
+const readSettings=()=>Object.fromEntries(SET.map(f=>[f,$("#"+f).value.trim()]));
+const writeSettings=st=>SET.forEach(f=>{if(st[f]!=null)$("#"+f).value=st[f]});
+const snapshot=()=>({settings:readSettings(),mods:clone(mods),ovFiles:[...overrideFiles],ovEntries:new Map(overrideEntries)});
+function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display="none",3800)}
+
+/* ---------- Persistencia (solo comodidad por navegador) ---------- */
+const FIELDS=[...SET,"cfKey","cfBase"];
+
+/* ---------- Biblioteca de modpacks ---------- */
+// Cada modpack guarda: ajustes, borrador (mods), último estado aplicado (base) y overrides. Los JAR locales y el
+// contenido de los overrides solo viven en memoria: se conservan al cambiar de modpack, pero no al recargar la página.
+function captureCurrent(){return{libId:library.activeId,settings:readSettings(),mods,base,overrideFiles:[...overrideFiles],overrideEntries:new Map(overrideEntries)}}
+function restore(st){writeSettings(st.settings);mods=st.mods;base=st.base;overrideFiles=[...st.overrideFiles];overrideEntries.clear();st.overrideEntries.forEach((v,k)=>overrideEntries.set(k,v));$("#filter").value=""}
+function newPackState(name,pId){
+  const settings={pId:pId||uid(),pName:name,pVer:"1.0.0",pAuthor:"",pDesc:"",mc:"",loader:"fabric",lver:"",java:"",ram:""};
+  return{libId:uid(),settings,mods:[],base:{settings:{...settings},mods:[],ovFiles:[],ovEntries:new Map()},overrideFiles:[],overrideEntries:new Map()};
+}
+function save(){try{
+  if(library.activeId)library.packs[library.activeId]=captureCurrent();
+  const out={v:2,activeId:library.activeId,cf:{key:$("#cfKey").value,base:$("#cfBase").value},packs:{}};
+  for(const [id,st] of Object.entries(library.packs))out.packs[id]={settings:st.settings,mods:st.mods.filter(m=>m.source!=="local"),base:{settings:st.base.settings,mods:st.base.mods.filter(m=>m.source!=="local")}};
+  localStorage.setItem("mpf2",JSON.stringify(out));
+}catch(e){}}
+function load(){
+  try{
+    const raw=localStorage.getItem("mpf2");
+    if(raw){
+      const d=JSON.parse(raw);
+      for(const [id,p] of Object.entries(d.packs||{})){
+        const settings=p.settings||{};if(!settings.pId)settings.pId=uid();
+        library.packs[id]={libId:id,settings,mods:(p.mods||[]).filter(m=>m.source!=="local"),
+          base:{settings:(p.base&&p.base.settings)||{...settings},mods:((p.base&&p.base.mods)||[]).filter(m=>m.source!=="local"),ovFiles:[],ovEntries:new Map()},
+          overrideFiles:[],overrideEntries:new Map()};
+      }
+      if(d.cf){$("#cfKey").value=d.cf.key||"";$("#cfBase").value=d.cf.base||""}
+      const ids=Object.keys(library.packs);
+      if(ids.length){library.activeId=library.packs[d.activeId]?d.activeId:ids[0];restore(library.packs[library.activeId]);return true}
+      return false;
+    }
+    const old=localStorage.getItem("mpf");   // migración desde la versión de un solo modpack
+    if(old){
+      const d=JSON.parse(old),settings={};SET.forEach(f=>{if(d[f]!=null)settings[f]=d[f]});
+      if(!settings.pId)settings.pId=uid();
+      const libId=settings.pId,mm=(d.mods||[]).filter(m=>m.source!=="local");
+      library.packs[libId]={libId,settings,mods:mm,base:d.base?{settings:d.base.settings||{...settings},mods:(d.base.mods||[]).filter(m=>m.source!=="local"),ovFiles:[],ovEntries:new Map()}:{settings:{...settings},mods:clone(mm),ovFiles:[],ovEntries:new Map()},overrideFiles:[],overrideEntries:new Map()};
+      if(d.cfKey)$("#cfKey").value=d.cfKey;if(d.cfBase)$("#cfBase").value=d.cfBase;
+      library.activeId=libId;restore(library.packs[libId]);return true;
+    }
+  }catch(e){}
+  return false;
+}
+
+/* ---------- Utilidades ---------- */
+const ctx=()=>({mc:$("#mc").value.trim(),loader:$("#loader").value});
+async function jget(url,opt){const r=await fetch(url,opt);if(!r.ok)throw new Error(r.status+" "+r.statusText);return r.json()}
+async function hashBuf(buf,algo){const h=await crypto.subtle.digest(algo,buf);return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join("")}
+function download(name,blob){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+const has=(src,pid)=>mods.some(m=>m.source===src&&String(m.projectId)===String(pid));
+
+/* ---------- Versiones de Minecraft y loader ---------- */
+async function loadMc(){
+  try{const v=await jget(MR+"/tag/game_version");$("#mcList").innerHTML=v.filter(x=>x.version_type==="release").map(x=>`<option value="${esc(x.version)}">`).join("")}catch(e){}
+}
+async function loadLoaderVersions(autofill=true){
+  const l=$("#loader").value,mc=$("#mc").value.trim();let list=[];
+  try{
+    if(l==="fabric")list=(await jget("https://meta.fabricmc.net/v2/versions/loader")).map(x=>x.version);
+    else if(l==="quilt")list=(await jget("https://meta.quiltmc.org/v3/versions/loader")).map(x=>x.version);
+    else if(l==="neoforge"){const r=await jget("https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge");list=(r.versions||[]).reverse()}
+    else if(l==="forge"){const p=(await jget("https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json")).promos;list=Object.entries(p).filter(([k])=>!mc||k.startsWith(mc+"-")).map(([,v])=>v)}
+  }catch(e){list=[]}
+  $("#lvList").innerHTML=list.slice(0,60).map(v=>`<option value="${esc(v)}">`).join("");
+  if(autofill&&!$("#lver").value&&list[0]&&l!=="neoforge")$("#lver").value=list[0];
+  refresh();
+}
+
+/* ---------- Modrinth ---------- */
+async function mrSearch(){
+  const {mc,loader}=ctx(),q=$("#mrQ").value.trim();
+  const facets=[["project_type:mod"]];if(mc)facets.push(["versions:"+mc]);facets.push(["categories:"+loader]);
+  $("#mrRes").innerHTML='<p class="note">Buscando…</p>';
+  try{
+    const r=await jget(`${MR}/search?query=${encodeURIComponent(q)}&limit=20&facets=${encodeURIComponent(JSON.stringify(facets))}`);
+    $("#mrRes").innerHTML=r.hits.length?r.hits.map((h,i)=>resHtml({icon:h.icon_url,title:h.title,desc:h.description,meta:`${h.author} · ${h.downloads.toLocaleString("es")} descargas`,added:has("modrinth",h.project_id),i,kind:"mr"})).join(""):'<p class="empty">Sin resultados para esta versión y loader.</p>';
+    $("#mrRes").dataset.hits=JSON.stringify(r.hits);
+  }catch(e){$("#mrRes").innerHTML=`<p class="note w">No se pudo consultar Modrinth: ${esc(e.message)}</p>`}
+}
+function resHtml(o){return `<div class="res">${o.icon?`<img src="${esc(o.icon)}" alt="" loading="lazy">`:'<div class="ic">mod</div>'}<div class="b"><div class="t">${esc(o.title)}</div><div class="d">${esc(o.desc)}</div><div class="note" style="margin:2px 0 0">${esc(o.meta)}</div></div><button class="sm ${o.added?"":"pri"}" data-add="${o.kind}:${o.i}" ${o.added?"disabled":""}>${o.added?"Añadido":"Añadir"}</button></div>`}
+
+async function mrAdd(info,{versionId=null,depth=0}={}){
+  const {mc,loader}=ctx();
+  if(has("modrinth",info.id))return;
+  let ver;
+  if(versionId)ver=await jget(`${MR}/version/${versionId}`);
+  else{
+    const q=new URLSearchParams({loaders:JSON.stringify([loader])});if(mc)q.set("game_versions",JSON.stringify([mc]));
+    const vs=await jget(`${MR}/project/${info.id}/version?${q}`);
+    ver=vs.find(v=>v.version_type==="release")||vs[0];
+  }
+  if(!ver){toast(`"${info.title}" no tiene versión para ${mc||"cualquier versión"} / ${loader}`);return}
+  const f=ver.files.find(x=>x.primary)||ver.files[0];
+  mods.push({
+    id:uid(),source:"modrinth",projectId:info.id,slug:info.slug,name:info.title,summary:info.description,iconUrl:info.icon_url||null,
+    versionId:ver.id,versionNumber:ver.version_number,versionType:ver.version_type,
+    gameVersions:ver.game_versions,loaders:ver.loaders,
+    side:{client:info.client_side||"unknown",server:info.server_side||"unknown"},
+    required:true,enabled:true,
+    file:{name:f.filename,size:f.size,downloadUrl:f.url,hashes:{sha1:f.hashes.sha1,sha512:f.hashes.sha512}},
+    dependencies:ver.dependencies.filter(d=>d.project_id).map(d=>({source:"modrinth",projectId:d.project_id,versionId:d.version_id||null,type:d.dependency_type}))
+  });
+  if($("#autoDeps").checked&&depth<4){
+    for(const d of ver.dependencies.filter(d=>d.dependency_type==="required"&&d.project_id)){
+      if(has("modrinth",d.project_id))continue;
+      try{const p=await jget(`${MR}/project/${d.project_id}`);await mrAdd({id:p.id,slug:p.slug,title:p.title,description:p.description,icon_url:p.icon_url,client_side:p.client_side,server_side:p.server_side},{versionId:d.version_id,depth:depth+1})}catch(e){toast("Dependencia no resuelta: "+d.project_id)}
+    }
+  }
+}
+
+/* ---------- CurseForge ---------- */
+const cfBase=()=>($("#cfBase").value.trim()||"https://api.curseforge.com").replace(/\/$/,"");
+async function cf(path,opt={}){
+  const key=$("#cfKey").value.trim();if(!key)throw new Error("Falta la API key de CurseForge");
+  return jget(cfBase()+path,{...opt,headers:{"x-api-key":key,Accept:"application/json",...(opt.body?{"Content-Type":"application/json"}:{})}});
+}
+const cfEdge=(id,name)=>`https://edge.forgecdn.net/files/${Math.floor(id/1000)}/${id%1000}/${encodeURIComponent(name)}`;
+const cfHashes=f=>{const h={};(f.hashes||[]).forEach(x=>{if(x.algo===1)h.sha1=x.value;if(x.algo===2)h.md5=x.value});if(f.fileFingerprint)h.murmur2=f.fileFingerprint;return h};
+function cfFileEntry(f){return{name:f.fileName,size:f.fileLength,downloadUrl:f.downloadUrl||cfEdge(f.id,f.fileName),downloadUrlRestricted:!f.downloadUrl,hashes:cfHashes(f)}}
+async function cfSearch(){
+  const {mc,loader}=ctx();const p=new URLSearchParams({gameId:432,classId:6,searchFilter:$("#cfQ").value.trim(),pageSize:20,sortField:2,sortOrder:"desc",modLoaderType:CF_LOADER[loader]});if(mc)p.set("gameVersion",mc);
+  $("#cfRes").innerHTML='<p class="note">Buscando…</p>';
+  try{
+    const r=(await cf("/v1/mods/search?"+p)).data;
+    $("#cfRes").dataset.hits=JSON.stringify(r);
+    $("#cfRes").innerHTML=r.length?r.map((h,i)=>resHtml({icon:h.logo?.thumbnailUrl,title:h.name,desc:h.summary,meta:`${h.authors?.[0]?.name||""} · ${Math.round(h.downloadCount).toLocaleString("es")} descargas`,added:has("curseforge",h.id),i,kind:"cf"})).join(""):'<p class="empty">Sin resultados.</p>';
+  }catch(e){$("#cfRes").innerHTML=`<p class="note w">${esc(e.message)}. Si la key es válida, el bloqueo suele ser CORS: configura un proxy en "URL base".</p>`}
+}
+async function cfAdd(h){
+  const {mc,loader}=ctx();if(has("curseforge",h.id))return;
+  const p=new URLSearchParams({pageSize:50,modLoaderType:CF_LOADER[loader]});if(mc)p.set("gameVersion",mc);
+  const files=(await cf(`/v1/mods/${h.id}/files?`+p)).data.sort((a,b)=>new Date(b.fileDate)-new Date(a.fileDate));
+  const f=files.find(x=>x.releaseType===1)||files[0];
+  if(!f){toast(`"${h.name}" no tiene archivo para ${mc||"cualquier versión"} / ${loader}`);return}
+  mods.push({id:uid(),source:"curseforge",projectId:h.id,slug:h.slug,name:h.name,summary:h.summary,iconUrl:h.logo?.thumbnailUrl||null,
+    versionId:f.id,versionNumber:f.displayName,versionType:({1:"release",2:"beta",3:"alpha"})[f.releaseType]||"release",
+    gameVersions:f.gameVersions.filter(v=>/^\d/.test(v)),loaders:f.gameVersions.map(v=>v.toLowerCase()).filter(v=>CF_LOADER[v]),
+    side:{client:"unknown",server:"unknown"},required:true,enabled:true,file:cfFileEntry(f),
+    dependencies:(f.dependencies||[]).map(d=>({source:"curseforge",projectId:d.modId,versionId:null,type:({1:"embedded",2:"optional",3:"required",4:"tool",5:"incompatible",6:"include"})[d.relationType]||"required"}))});
+  for(const d of (f.dependencies||[]).filter(d=>d.relationType===3)){
+    if(has("curseforge",d.modId))continue;
+    try{await cfAdd((await cf("/v1/mods/"+d.modId)).data)}catch(e){toast("Dependencia no resuelta: "+d.modId)}
+  }
+}
+
+/* ---------- JAR locales ---------- */
+async function readJarMeta(file){
+  const m={modId:null,name:null,version:null,description:null,loader:null};
+  try{
+    const z=await JSZip.loadAsync(file);
+    const fab=z.file("fabric.mod.json")||z.file("quilt.mod.json");
+    if(fab){const j=JSON.parse((await fab.async("string")).replace(/^\uFEFF/,""));const q=j.quilt_loader;
+      Object.assign(m,q?{modId:q.id,name:q.metadata?.name,version:q.version,description:q.metadata?.description,loader:"quilt"}:{modId:j.id,name:j.name,version:j.version,description:j.description,loader:"fabric"})}
+    else{
+      const t=z.file("META-INF/neoforge.mods.toml")||z.file("META-INF/mods.toml");
+      if(t){const s=await t.async("string");const g=k=>(s.match(new RegExp(k+'\\s*=\\s*"([^"]*)"'))||[])[1];
+        Object.assign(m,{modId:g("modId"),name:g("displayName"),version:g("version"),description:g("description"),loader:t.name.includes("neoforge")?"neoforge":"forge"})}
+      else if(z.file("mcmod.info")){try{const j=JSON.parse(await z.file("mcmod.info").async("string"));const a=(j.modList||j)[0];Object.assign(m,{modId:a.modid,name:a.name,version:a.version,description:a.description,loader:"forge"})}catch(e){}}
+    }
+    if(m.version&&m.version.includes("${"))m.version=null;
+  }catch(e){}
+  return m;
+}
+async function addJar(file){
+  const buf=await file.arrayBuffer();
+  const [sha1,sha256]=await Promise.all([hashBuf(buf,"SHA-1"),hashBuf(buf,"SHA-256")]);
+  if(mods.some(x=>x.file?.hashes?.sha1===sha1)){toast(file.name+" ya está en el pack");return}
+  const meta=await readJarMeta(file),id=uid();
+  jarBlobs.set(id,file);
+  mods.push({id,source:"local",projectId:meta.modId,slug:meta.modId,name:meta.name||meta.modId||file.name.replace(/\.jar$/i,""),summary:(meta.description||"").trim().split("\n")[0],iconUrl:null,
+    versionId:null,versionNumber:meta.version,versionType:null,gameVersions:[],loaders:meta.loader?[meta.loader]:[],side:{client:"unknown",server:"unknown"},required:true,enabled:true,
+    file:{name:file.name,size:file.size,downloadUrl:null,bundledPath:"local-mods/"+file.name,hashes:{sha1,sha256}},dependencies:[]});
+}
+
+/* ---------- Importar CurseForge / overrides ---------- */
+const JUNK=/(^|\/)(__MACOSX\/|\.DS_Store$|Thumbs\.db$)/;
+function collectOverrides(z,prefix){
+  const out=[],jars=[];
+  for(const [path,entry] of Object.entries(z.files)){
+    if(entry.dir||JUNK.test(path)||!path.startsWith(prefix))continue;
+    const rel=path.slice(prefix.length);if(!rel)continue;
+    if(/^mods\/[^/]+\.jar$/i.test(rel))jars.push({rel,entry});else out.push({rel,entry});
+  }
+  return{out,jars};
+}
+const folders=list=>[...new Set(list.map(o=>o.rel.includes("/")?o.rel.split("/")[0]+"/":o.rel))].slice(0,8).join(", ");
+function applyOverrides(list,mode){
+  if(mode==="replace"){overrideEntries.clear();overrideFiles=[]}
+  const set=new Set(overrideFiles);
+  for(const {rel,entry} of list){overrideEntries.set(rel,entry);set.add(rel)}
+  overrideFiles=[...set];
+}
+function askImport(o){return new Promise(res=>{
+  const d=$("#impDlg");let out=null;
+  $("#impTitle").textContent=o.title;$("#impInfo").textContent=o.info;
+  $("#impWarn").hidden=!o.warn;$("#impWarn").textContent=o.warn||"";
+  $("#impTargetG").hidden=!o.target;$("#impModsG").hidden=!o.nMods;$("#impOvG").hidden=!o.nOv;$("#impPackG").hidden=!o.pack;
+  $("#impModsTxt").textContent=`El ZIP trae ${o.nMods} mods. Tu pack tiene ${mods.length}.`;
+  $("#impOvTxt").textContent=`El ZIP trae ${o.nOv} archivos. Tu pack tiene ${overrideFiles.length}.`;
+  d.querySelectorAll('input[type=radio][value="add"]').forEach(r=>r.checked=true);
+  d.querySelectorAll("input[name=impT]").forEach(r=>r.checked=r.value==="cur");
+  $("#impPack").checked=!mods.length;
+  $("#impOk").onclick=()=>{out={target:(d.querySelector("input[name=impT]:checked")||{}).value||"cur",mods:d.querySelector("input[name=impM]:checked").value,ov:d.querySelector("input[name=impO]:checked").value,pack:$("#impPack").checked};d.close()};
+  $("#impCancel").onclick=()=>d.close();
+  d.addEventListener("close",()=>res(out),{once:true});
+  d.showModal();
+})}
+async function importCf(file){
+  const z=await JSZip.loadAsync(file);const mf=z.file("manifest.json");
+  if(!mf){toast("El ZIP no contiene manifest.json: ¿es un modpack de CurseForge?");return}
+  const m=JSON.parse(await mf.async("string"));
+  if(m.manifestType&&m.manifestType!=="minecraftModpack"){toast("Tipo de manifiesto no soportado: "+m.manifestType);return}
+  const files=m.files||[];
+  const ml=(m.minecraft?.modLoaders||[]).find(x=>x.primary)||m.minecraft?.modLoaders?.[0];
+  const zMc=m.minecraft?.version||"",zLoader=ml?ml.id.slice(0,ml.id.indexOf("-")):"",zLver=ml?ml.id.slice(ml.id.indexOf("-")+1):"";
+  const {out,jars}=collectOverrides(z,(m.overrides||"overrides")+"/");
+  const curMc=$("#mc").value.trim(),curL=$("#loader").value;
+  const diff=[];if(zMc&&curMc&&zMc!==curMc)diff.push(`Minecraft ${zMc} (tu pack: ${curMc})`);if(zLoader&&mods.length&&zLoader!==curL)diff.push(`${zLoader} (tu pack: ${curL})`);
+  const choice=await askImport({title:"Importar «"+(m.name||file.name)+"»",
+    info:`Minecraft ${zMc||"?"} · ${ml?ml.id:"sin loader"} · ${files.length} mods de CurseForge, ${jars.length} JAR locales, ${out.length} archivos de overrides${out.length?" ("+folders(out)+")":""}.`,
+    warn:diff.length?"El ZIP es para "+diff.join(" y ")+". Si no actualizas los ajustes, algunos mods pueden no ser compatibles.":"",
+    nMods:files.length+jars.length,nOv:out.length,pack:true,target:true});
+  if(!choice)return;
+  if(choice.target==="new"){createPack(m.name||file.name.replace(/\.zip$/i,""),{autofill:false});choice.pack=true;choice.mods="add";choice.ov="add"}
+  if(choice.pack){
+    $("#pName").value=m.name||"";$("#pVer").value=m.version||"";$("#pAuthor").value=m.author||"";$("#mc").value=zMc;
+    if(ml){$("#loader").value=zLoader;$("#lver").value=zLver}
+    if(m.minecraft?.recommendedRam)$("#ram").value=m.minecraft.recommendedRam;
+    loadLoaderVersions();
+  }
+  if(choice.mods==="replace"){mods=[]}
+  const entries=[];
+  for(const f of files){
+    if(has("curseforge",f.projectID))continue;
+    entries.push({id:uid(),source:"curseforge",projectId:f.projectID,slug:null,name:"CurseForge #"+f.projectID,summary:"",iconUrl:null,versionId:f.fileID,versionNumber:null,versionType:null,
+      gameVersions:[],loaders:[],side:{client:"unknown",server:"unknown"},required:f.required!==false,enabled:true,unresolved:true,
+      file:{name:null,size:null,downloadUrl:null,hashes:{}},dependencies:[]});
+  }
+  mods.push(...entries);
+  for(const j of jars)await addJar(new File([await j.entry.async("blob")],j.rel.slice(5)));
+  applyOverrides(out,choice.ov);
+  render();
+  toast(`Importados ${entries.length} mods`+(files.length-entries.length?` (${files.length-entries.length} duplicados omitidos)`:"")+(out.length?` y ${out.length} overrides`:""));
+  if(entries.length){
+    if($("#cfKey").value.trim())await resolveCf(entries);
+    else setTimeout(()=>toast("Sin API key: los mods quedan solo con IDs. Añade la key y vuelve a importar para resolver nombres y URLs."),4200);
+  }
+}
+async function importOverridesOnly(file){
+  const z=await JSZip.loadAsync(file);let prefix="";
+  const mf=z.file("manifest.json");
+  if(mf){try{prefix=(JSON.parse(await mf.async("string")).overrides||"overrides")+"/"}catch(e){prefix="overrides/"}}
+  else if(Object.keys(z.files).some(p=>p.startsWith("overrides/")))prefix="overrides/";
+  const {out,jars}=collectOverrides(z,prefix);
+  if(!out.length){toast("No se encontraron archivos de overrides en el ZIP");return}
+  const choice=await askImport({title:"Importar overrides",info:`${out.length} archivos (${folders(out)})`+(jars.length?`. Se ignoran ${jars.length} JAR de mods/, porque solo se importan overrides`:"")+".",nMods:0,nOv:out.length,pack:false});
+  if(!choice)return;
+  applyOverrides(out,choice.ov);render();toast(`Overrides importados: ${out.length} archivos`);
+}
+async function resolveCf(entries){
+  try{
+    const fr=(await cf("/v1/mods/files",{method:"POST",body:JSON.stringify({fileIds:entries.map(e=>e.versionId)})})).data;
+    const mr=(await cf("/v1/mods",{method:"POST",body:JSON.stringify({modIds:[...new Set(entries.map(e=>e.projectId))]})})).data;
+    const fm=new Map(fr.map(f=>[f.id,f])),mm=new Map(mr.map(x=>[x.id,x]));
+    for(const e of entries){const f=fm.get(e.versionId),p=mm.get(e.projectId);if(p){e.name=p.name;e.slug=p.slug;e.summary=p.summary;e.iconUrl=p.logo?.thumbnailUrl||null}
+      if(f){e.versionNumber=f.displayName;e.versionType=({1:"release",2:"beta",3:"alpha"})[f.releaseType];e.gameVersions=f.gameVersions.filter(v=>/^\d/.test(v));e.loaders=f.gameVersions.map(v=>v.toLowerCase()).filter(v=>CF_LOADER[v]);e.file=cfFileEntry(f);
+        e.dependencies=(f.dependencies||[]).map(d=>({source:"curseforge",projectId:d.modId,versionId:null,type:({1:"embedded",2:"optional",3:"required",4:"tool",5:"incompatible",6:"include"})[d.relationType]||"required"}));e.unresolved=false}}
+    render();toast("Mods resueltos con la API de CurseForge");
+  }catch(e){toast("No se pudo resolver con CurseForge: "+e.message)}
+}
+
+/* ---------- Exportar ---------- */
+function buildManifest(withBundle,st=base){
+  const S=st.settings,sideOf=m=>m.side||{client:"unknown",server:"unknown"};
+  return{
+    schema:"modpack-forge/1",
+    generator:{name:"Modpack Forge",exportedAt:new Date().toISOString()},
+    pack:{id:S.pId||uid(),slug:slug(S.pName||"")||"modpack",name:S.pName||"Modpack sin nombre",version:S.pVer||"1.0.0",author:S.pAuthor||"",description:S.pDesc||""},
+    minecraft:{version:S.mc||""},
+    loader:{type:S.loader,version:S.lver||""},
+    runtime:{javaMinVersion:+S.java||null,recommendedRamMb:+S.ram||null},
+    install:{modsDir:"mods/",overridesBundledPath:st.ovEntries.size&&withBundle?"overrides/":null,verifyHashes:true},
+    mods:st.mods.map(m=>({
+      id:m.id,source:m.source,projectId:m.projectId??null,slug:m.slug??null,name:m.name,summary:m.summary||"",iconUrl:m.iconUrl||null,
+      version:{id:m.versionId??null,number:m.versionNumber??null,type:m.versionType??null,gameVersions:m.gameVersions||[],loaders:m.loaders||[]},
+      side:sideOf(m),required:m.required!==false,enabled:m.enabled!==false,
+      file:{name:m.file?.name||null,size:m.file?.size??null,hashes:m.file?.hashes||{},
+        downloadUrl:m.file?.downloadUrl||null,downloadUrlRestricted:!!m.file?.downloadUrlRestricted,
+        bundledPath:withBundle&&m.source==="local"?m.file.bundledPath:null},
+      dependencies:m.dependencies||[],
+      resolved:m.unresolved?false:true
+    })),
+    overrides:{files:st.ovFiles}
+  };
+}
+const slug=s=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+function validate(st=base){
+  const w=[],S=st.settings;if(!S.mc)w.push("Falta la versión de Minecraft");if(!S.lver)w.push("Falta la versión del loader");
+  if(!st.mods.length)w.push("El pack no tiene mods");
+  const un=st.mods.filter(m=>m.unresolved).length;if(un)w.push(un+" mods de CurseForge sin resolver (solo tienen IDs)");
+  const nu=st.mods.filter(m=>!m.unresolved&&!m.file?.downloadUrl&&m.source!=="local").length;if(nu)w.push(nu+" mods sin URL de descarga");
+  return w;
+}
+const fileBase=()=>slug(base.settings.pName||"")||"modpack";
+function exportJson(){
+  const w=validate();if(w.length)toast("Aviso: "+w[0]+(w.length>1?` (+${w.length-1} más)`:""));
+  download(fileBase()+".json",new Blob([JSON.stringify(buildManifest(false),null,2)],{type:"application/json"}));
+}
+async function exportZip(){
+  const z=new JSZip();z.file("modpack.json",JSON.stringify(buildManifest(true),null,2));
+  for(const m of base.mods)if(m.source==="local"&&jarBlobs.has(m.id))z.file(m.file.bundledPath,jarBlobs.get(m.id));
+  for(const rel of base.ovFiles){const e=base.ovEntries.get(rel);if(e)z.file("overrides/"+rel,e.async("blob"))}
+  toast("Generando ZIP…");
+  download(fileBase()+".zip",await z.generateAsync({type:"blob",compression:"DEFLATE"}));
+}
+async function importJson(file){
+  const j=JSON.parse(await file.text());if(!String(j.schema||"").startsWith("modpack-forge/")){toast("No es un JSON de Modpack Forge");return}
+  let pid=/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(j.pack?.id||"")?j.pack.id:null;
+  if(library.activeId)library.packs[library.activeId]=captureCurrent();
+  const same=pid&&Object.values(library.packs).find(st=>st.base.settings.pId===pid||st.settings.pId===pid);
+  if(same){
+    if(confirm(`Ya tienes un modpack con este ID: «${same.settings.pName||"sin nombre"}».\n\nAceptar = reemplazar su contenido (quedará como cambios pendientes).\nCancelar = importarlo como un modpack nuevo con otro ID.`))switchPack(same.libId);
+    else{pid=uid();createPack(j.pack.name||"Modpack importado",{autofill:false,pId:pid})}
+  }else{pid=pid||uid();createPack(j.pack?.name||"Modpack importado",{autofill:false,pId:pid})}
+  $("#pId").value=pid;
+  $("#pName").value=j.pack.name;$("#pVer").value=j.pack.version;$("#pAuthor").value=j.pack.author||"";$("#pDesc").value=j.pack.description||"";
+  $("#mc").value=j.minecraft.version;$("#loader").value=j.loader.type;$("#lver").value=j.loader.version;$("#java").value=j.runtime?.javaMinVersion||"";$("#ram").value=j.runtime?.recommendedRamMb||"";
+  mods=j.mods.map(m=>({id:m.id||uid(),source:m.source,projectId:m.projectId,slug:m.slug,name:m.name,summary:m.summary,iconUrl:m.iconUrl,versionId:m.version?.id,versionNumber:m.version?.number,versionType:m.version?.type,
+    gameVersions:m.version?.gameVersions||[],loaders:m.version?.loaders||[],side:m.side,required:m.required,enabled:m.enabled,file:m.file,dependencies:m.dependencies||[],unresolved:m.resolved===false}));
+  overrideEntries.clear();overrideFiles=j.overrides?.files||[];render();toast("JSON cargado ("+mods.length+" mods). Revisa los cambios pendientes y aplícalos. Los JAR locales deben volver a añadirse.");
+}
+
+/* ---------- Cambiar versión de un mod ---------- */
+let verItems=[],verIdx=-1;
+const RT={1:"release",2:"beta",3:"alpha"},DEP={1:"embedded",2:"optional",3:"required",4:"tool",5:"incompatible",6:"include"};
+function applyMr(m,v){
+  const f=v.files.find(x=>x.primary)||v.files[0];
+  Object.assign(m,{versionId:v.id,versionNumber:v.version_number,versionType:v.version_type,gameVersions:v.game_versions,loaders:v.loaders,unresolved:false,
+    file:{name:f.filename,size:f.size,downloadUrl:f.url,hashes:{sha1:f.hashes.sha1,sha512:f.hashes.sha512}},
+    dependencies:v.dependencies.filter(d=>d.project_id).map(d=>({source:"modrinth",projectId:d.project_id,versionId:d.version_id||null,type:d.dependency_type}))});
+}
+function applyCf(m,f){
+  Object.assign(m,{versionId:f.id,versionNumber:f.displayName,versionType:RT[f.releaseType]||"release",gameVersions:f.gameVersions.filter(v=>/^\d/.test(v)),
+    loaders:f.gameVersions.map(v=>v.toLowerCase()).filter(v=>CF_LOADER[v]),unresolved:false,file:cfFileEntry(f),
+    dependencies:(f.dependencies||[]).map(d=>({source:"curseforge",projectId:d.modId,versionId:null,type:DEP[d.relationType]||"required"}))});
+}
+async function loadVersions(){
+  const m=mods[verIdx],{mc,loader}=ctx(),all=$("#verAll").checked,body=$("#verBody");
+  body.innerHTML='<p class="note">Cargando versiones…</p>';
+  try{
+    if(m.source==="modrinth"){
+      const q=new URLSearchParams({loaders:JSON.stringify([loader])});if(mc&&!all)q.set("game_versions",JSON.stringify([mc]));
+      verItems=(await jget(`${MR}/project/${m.projectId}/version?${q}`)).map(v=>({cur:v.id===m.versionId,label:v.version_number,type:v.version_type,date:v.date_published,gv:v.game_versions,apply:()=>applyMr(m,v)}));
+    }else{
+      const p=new URLSearchParams({pageSize:50,modLoaderType:CF_LOADER[loader]});if(mc&&!all)p.set("gameVersion",mc);
+      const fs=(await cf(`/v1/mods/${m.projectId}/files?`+p)).data.sort((a,b)=>new Date(b.fileDate)-new Date(a.fileDate));
+      verItems=fs.map(f=>({cur:f.id===m.versionId,label:f.displayName,type:RT[f.releaseType]||"release",date:f.fileDate,gv:f.gameVersions.filter(v=>/^\d/.test(v)),apply:()=>applyCf(m,f)}));
+    }
+    body.innerHTML=verItems.length?verItems.map((v,k)=>`<div class="res ${v.cur?"cur":""}"><div class="b"><div class="t">${esc(v.label)}</div>
+      <div class="note" style="margin:0"><span class="tag">${esc(v.type)}</span>${new Date(v.date).toLocaleDateString("es")} · MC ${esc(v.gv.slice(0,4).join(", "))}${v.gv.length>4?"…":""}</div></div>
+      <button class="sm ${v.cur?"":"pri"}" data-pick="${k}" ${v.cur?"disabled":""}>${v.cur?"Actual":"Usar"}</button></div>`).join(""):'<p class="empty">No hay versiones para este loader y versión de Minecraft. Marca la casilla de arriba para ver otras.</p>';
+  }catch(e){body.innerHTML=`<p class="note w">No se pudieron cargar las versiones: ${esc(e.message)}</p>`}
+}
+function openVersions(i){verIdx=i;$("#verTitle").textContent="Versión de "+mods[i].name;$("#verAll").checked=false;$("#verDlg").showModal();loadVersions()}
+$("#verAll").onchange=loadVersions;
+$("#verClose").onclick=()=>$("#verDlg").close();
+$("#verBody").addEventListener("click",e=>{
+  const b=e.target.closest("[data-pick]");if(!b)return;
+  verItems[+b.dataset.pick].apply();$("#verDlg").close();render();toast(`${mods[verIdx].name}: versión cambiada a ${mods[verIdx].versionNumber}`);
+});
+
+/* ---------- Cambios pendientes (stage) ---------- */
+const short=v=>{v=String(v??"");return v?(v.length>44?v.slice(0,44)+"…":v):"(vacío)"};
+function modDiff(b,w){
+  const d=[];
+  if(b.versionId!==w.versionId||b.versionNumber!==w.versionNumber)d.push(`versión ${b.versionNumber||b.file?.name||"sin resolver"} → ${w.versionNumber||w.file?.name||"sin resolver"}`);
+  if((b.enabled!==false)!==(w.enabled!==false))d.push(w.enabled===false?"se desactiva":"se activa");
+  if(w.source==="local"&&(b.file?.downloadUrl||null)!==(w.file?.downloadUrl||null))d.push("URL de descarga modificada");
+  return d;
+}
+function computeChanges(){
+  const out=[],bs=base.settings,cs=readSettings();
+  for(const f of SET)if((bs[f]??"")!==(cs[f]??""))out.push({kind:"set",label:SET_LABEL[f],detail:`${short(bs[f])} → ${short(cs[f])}`,revert:()=>{$("#"+f).value=bs[f]??""}});
+  // overrides
+  const bf=new Set(base.ovFiles),cfs=new Set(overrideFiles);
+  const added=overrideFiles.filter(r=>!bf.has(r)),removed=base.ovFiles.filter(r=>!cfs.has(r)),over=overrideFiles.filter(r=>bf.has(r)&&base.ovEntries.get(r)!==overrideEntries.get(r));
+  if(added.length||removed.length||over.length){
+    const t=[];if(added.length)t.push(`${added.length} nuevos`);if(over.length)t.push(`${over.length} sobrescritos`);if(removed.length)t.push(`${removed.length} eliminados`);
+    out.push({kind:"ov",label:"carpetas extra",detail:t.join(", ")+" ("+folders([...added,...over,...removed].map(rel=>({rel})))+")",
+      revert:()=>{overrideFiles=[...base.ovFiles];overrideEntries.clear();base.ovEntries.forEach((v,k)=>overrideEntries.set(k,v))}});
+  }
+  // mods (si se quita y se vuelve a añadir el mismo proyecto, se trata como una sola modificación)
+  const bm=new Map(base.mods.map((m,i)=>[m.id,[m,i]])),wm=new Map(mods.map(m=>[m.id,m]));
+  const orphan=new Map();
+  for(const [id,[b]] of bm)if(!wm.has(id)&&b.source!=="local"&&b.projectId!=null)orphan.set(b.source+":"+b.projectId,b);
+  const paired=new Set();
+  for(const m of mods){
+    let b=bm.get(m.id)?.[0];
+    if(!b&&m.source!=="local"){const k=m.source+":"+m.projectId;if(orphan.has(k)){b=orphan.get(k);orphan.delete(k);paired.add(b.id)}}
+    if(!b){out.push({kind:"add",mid:m.id,label:m.name,detail:SRC[m.source][1]+(m.versionNumber?" · "+m.versionNumber:""),revert:()=>{mods=mods.filter(x=>x.id!==m.id)}});continue}
+    const d=modDiff(b,m);
+    if(d.length||paired.has(b.id)&&d.length)out.push({kind:"upd",mid:m.id,label:m.name,detail:d.join("; "),revert:()=>{const k=mods.findIndex(x=>x.id===m.id);if(k>=0)mods[k]=clone(b)}});
+  }
+  for(const [id,[b,i]] of bm)if(!wm.has(id)&&!paired.has(id))out.push({kind:"rem",label:b.name,detail:SRC[b.source][1]+(b.versionNumber?" · "+b.versionNumber:""),revert:()=>{mods.splice(Math.min(i,mods.length),0,clone(b))}});
+  return out;
+}
+function renderChanges(){
+  changes=computeChanges();const n=changes.length;
+  $("#chgCount").textContent=n;$("#chgApply").disabled=!n;$("#chgDiscard").disabled=!n;
+  $("#chgApply").textContent=n?`Aplicar ${n} cambio${n>1?"s":""}`:"Aplicar cambios";
+  const G={add:"+",rem:"−",upd:"~",set:"✎",ov:"▤"},C={add:"add",rem:"rem",upd:"upd",set:"set",ov:"set"},T={add:"Añadir",rem:"Quitar",upd:"Modificar",set:"Ajuste",ov:"Overrides"};
+  $("#chgList").innerHTML=n?changes.map((c,i)=>`<div class="chg"><span class="k ${C[c.kind]}" aria-hidden="true">${G[c.kind]}</span><div class="b"><div><b>${T[c.kind]}:</b> ${esc(c.label)}</div><div class="d">${esc(c.detail)}</div></div><button class="sm" data-rev="${i}">Descartar</button></div>`).join(""):'<p class="empty">Sin cambios pendientes. Lo que añadas, quites o edites aparecerá aquí hasta que lo apliques.</p>';
+  const en=$("#expNote");en.className="note"+(n?" w":"");en.textContent=n?`Hay ${n} cambio${n>1?"s":""} sin aplicar: no se incluirán en la exportación.`:"Se exporta el estado aplicado del pack.";
+}
+function allModIds(){
+  const s=new Set([...base.mods,...mods].map(m=>m.id));
+  for(const st of Object.values(library.packs))if(st.libId!==library.activeId)for(const m of [...st.base.mods,...st.mods])s.add(m.id);
+  return s;
+}
+function pruneBlobs(){const keep=allModIds();for(const k of [...jarBlobs.keys()])if(!keep.has(k))jarBlobs.delete(k)}
+function applyAll(){base=snapshot();pruneBlobs();render();toast("Cambios aplicados")}
+function discardAll(){writeSettings(base.settings);mods=clone(base.mods);overrideFiles=[...base.ovFiles];overrideEntries.clear();base.ovEntries.forEach((v,k)=>overrideEntries.set(k,v));pruneBlobs();render();toast("Cambios descartados")}
+function refresh(){renderChanges();renderPacks();save()}
+
+function renderPacks(){
+  if(library.activeId)library.packs[library.activeId]=captureCurrent();
+  const all=Object.values(library.packs);
+  $("#packSel").innerHTML=all.map(st=>`<option value="${esc(st.libId)}"${st.libId===library.activeId?" selected":""}>${esc(st.settings.pName||"Modpack sin nombre")} (${st.mods.length} mods)</option>`).join("");
+  const loose=all.some(st=>st.mods.some(m=>m.source==="local")||st.overrideFiles.length);
+  $("#packNote").textContent=`${all.length} modpack${all.length>1?"s":""} en este navegador.`+(loose?" Los JAR locales y overrides no se conservan al recargar la página.":"");
+}
+function switchPack(id){
+  if(!library.packs[id])return;
+  if(library.activeId&&library.packs[library.activeId])library.packs[library.activeId]=captureCurrent();
+  library.activeId=id;restore(library.packs[id]);render();loadLoaderVersions(false);
+}
+function createPack(name,opts={}){
+  const st=newPackState(name,opts.pId);library.packs[st.libId]=st;switchPack(st.libId);
+  // Un modpack nuevo arranca "limpio": la versión del loader autorrellenada no cuenta como cambio pendiente.
+  if(opts.autofill!==false)loadLoaderVersions(true).then(()=>{if(library.activeId===st.libId&&!mods.length){base.settings=readSettings();render()}});
+  return st;
+}
+function duplicatePack(){
+  const cur=captureCurrent(),libId=uid();
+  const settings={...cur.settings,pId:uid(),pName:(cur.settings.pName||"Modpack")+" (copia)"},m=clone(cur.mods);
+  library.packs[libId]={libId,settings,mods:m,base:{settings:{...settings},mods:clone(m),ovFiles:[...cur.overrideFiles],ovEntries:new Map(cur.overrideEntries)},overrideFiles:[...cur.overrideFiles],overrideEntries:new Map(cur.overrideEntries)};
+  switchPack(libId);toast("Modpack duplicado con un ID nuevo");
+}
+function deletePack(){
+  if(!library.packs[library.activeId])return;
+  const name=$("#pName").value.trim()||"sin nombre";
+  if(!confirm(`¿Eliminar el modpack «${name}»?\n\nSe perderán sus mods, cambios pendientes y overrides guardados en este navegador. Los JSON o ZIP que ya exportaste no se tocan.`))return;
+  delete library.packs[library.activeId];library.activeId=null;
+  const next=Object.keys(library.packs)[0];
+  if(next)switchPack(next);else createPack("Mi modpack");
+  pruneBlobs();toast(`Modpack «${name}» eliminado`);
+}
+
+/* ---------- Render lista ---------- */
+const SRC={modrinth:["mr","Modrinth"],curseforge:["cf","CurseForge"],local:["lo","JAR local"]};
+function render(){
+  renderChanges();renderPacks();
+  const mark=new Map(changes.filter(c=>c.mid).map(c=>[c.mid,c.kind]));
+  const f=$("#filter").value.toLowerCase();
+  const tot=mods.reduce((a,m)=>a+(m.file?.size||0),0);
+  $("#stat").innerHTML=`<span><b>${mods.length}</b> mods</span><span><b>${(tot/1048576).toFixed(1)}</b> MB</span><span>${["modrinth","curseforge","local"].map(s=>`${mods.filter(m=>m.source===s).length} ${SRC[s][1]}`).join(" · ")}</span>`+(overrideFiles.length?`<span>${overrideFiles.length} archivos de overrides</span>`:"");
+  const list=mods.map((m,i)=>[m,i]).filter(([m])=>!f||(m.name||"").toLowerCase().includes(f));
+  $("#mods").innerHTML=list.length?list.map(([m,i])=>`<div class="res ${m.enabled===false?"off":""}">${m.iconUrl?`<img src="${esc(m.iconUrl)}" alt="" loading="lazy">`:'<div class="ic">mod</div>'}
+    <div class="b"><div class="t">${esc(m.name)}</div><div class="note" style="margin:0"><span class="tag ${SRC[m.source][0]}">${SRC[m.source][1]}</span>${esc(m.versionNumber||m.file?.name||"")}${mark.get(m.id)==="add"?' <span class="tag new">nuevo</span>':mark.get(m.id)==="upd"?' <span class="tag mod">modificado</span>':""}${m.unresolved?' <span class="tag lo">sin resolver</span>':""}${m.file?.downloadUrlRestricted?' <span class="tag lo">URL restringida</span>':""}${m.source==="local"&&!m.file.downloadUrl?"":""}</div></div>
+    <div class="row" style="flex:none;gap:4px">
+      <button class="sm" data-act="tog:${i}" title="Activar o desactivar">${m.enabled===false?"Off":"On"}</button>
+      ${m.source==="local"?`<button class="sm" data-act="url:${i}" title="Definir URL de descarga">URL</button>`:`<button class="sm" data-act="ver:${i}" title="Cambiar la versión del mod">Versión</button>`}
+      <button class="sm dng" data-act="del:${i}" aria-label="Quitar ${esc(m.name)}">✕</button></div></div>`).join(""):'<p class="empty">Todavía no hay mods. Busca en Modrinth o CurseForge, o suelta archivos JAR.</p>';
+  save();
+}
+
+/* ---------- Eventos ---------- */
+$$(".tabs button").forEach(b=>b.onclick=()=>{$$(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));$$(".pane").forEach(p=>p.hidden=p.id!=="t-"+b.dataset.t)});
+$("#mrGo").onclick=mrSearch;$("#mrQ").addEventListener("keydown",e=>{if(e.key==="Enter")mrSearch()});
+$("#cfGo").onclick=cfSearch;$("#cfQ").addEventListener("keydown",e=>{if(e.key==="Enter")cfSearch()});
+document.addEventListener("click",async e=>{
+  const add=e.target.closest("[data-add]");
+  if(add){const [k,i]=add.dataset.add.split(":");add.disabled=true;add.textContent="…";
+    try{
+      if(k==="mr"){const h=JSON.parse($("#mrRes").dataset.hits)[i];await mrAdd({id:h.project_id,slug:h.slug,title:h.title,description:h.description,icon_url:h.icon_url,client_side:h.client_side,server_side:h.server_side});mrSearch()}
+      else{await cfAdd(JSON.parse($("#cfRes").dataset.hits)[i]);cfSearch()}
+    }catch(err){toast("Error: "+err.message);add.disabled=false;add.textContent="Añadir"}
+    render();return}
+  const act=e.target.closest("[data-act]");
+  if(act){const [a,i]=act.dataset.act.split(":");const m=mods[+i];
+    if(a==="del")mods.splice(+i,1);
+    if(a==="tog")m.enabled=m.enabled===false;
+    if(a==="ver"){openVersions(+i);return}
+    if(a==="url"){const u=prompt("URL de descarga directa del JAR (opcional, para que el lanzador no dependa del ZIP):",m.file.downloadUrl||"");if(u!==null)m.file.downloadUrl=u.trim()||null}
+    render()}
+});
+const pick=(btn,inp)=>$(btn).onclick=()=>$(inp).click();
+pick("#pickOv","#ovIn");pick("#pickJar","#jarIn");pick("#pickCf","#cfIn");pick("#pickJson","#jsonIn");
+async function jars(files){for(const f of files)if(/\.jar$/i.test(f.name))await addJar(f);render()}
+$("#jarIn").onchange=e=>jars(e.target.files);
+function dz(sel,fn){const d=$(sel);d.ondragover=e=>{e.preventDefault();d.classList.add("over")};d.ondragleave=()=>d.classList.remove("over");d.ondrop=e=>{e.preventDefault();d.classList.remove("over");fn([...e.dataTransfer.files])}}
+dz("#drop",jars);dz("#dropCf",fs=>fs[0]&&importCf(fs[0]).catch(err=>toast("Error al importar: "+err.message)));
+$("#cfIn").onchange=e=>{const f=e.target.files[0];e.target.value="";f&&importCf(f).catch(err=>toast("Error al importar: "+err.message))};
+$("#ovIn").onchange=e=>{const f=e.target.files[0];e.target.value="";f&&importOverridesOnly(f).catch(err=>toast("Error al importar: "+err.message))};
+$("#jsonIn").onchange=e=>e.target.files[0]&&importJson(e.target.files[0]).catch(err=>toast("JSON inválido: "+err.message));
+$("#expJson").onclick=exportJson;$("#expZip").onclick=exportZip;
+$("#filter").oninput=render;
+SET.forEach(f=>{const el=$("#"+f);el.addEventListener("input",refresh);el.addEventListener("change",refresh)});
+["cfKey","cfBase"].forEach(f=>$("#"+f).addEventListener("change",save));
+$("#packSel").onchange=e=>switchPack(e.target.value);
+$("#packNew").onclick=()=>{const n=prompt("Nombre del nuevo modpack:","Nuevo modpack");if(n!==null)createPack(n.trim()||"Nuevo modpack")};
+$("#packDup").onclick=duplicatePack;
+$("#packDel").onclick=deletePack;
+$("#chgApply").onclick=applyAll;
+$("#chgDiscard").onclick=()=>{if(changes.length&&confirm(`¿Descartar ${changes.length} cambios pendientes y volver al último estado aplicado?`))discardAll()};
+$("#chgList").addEventListener("click",e=>{const b=e.target.closest("[data-rev]");if(!b)return;changes[+b.dataset.rev].revert();render()});
+$("#idNew").onclick=()=>{if(confirm("¿Generar un nuevo ID? Un lanzador que identifique el pack por su ID lo tratará como un modpack distinto.")){$("#pId").value=uid();refresh()}};
+$("#idCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("#pId").value);toast("ID copiado")}catch(e){$("#pId").select();toast("Copia el ID con Ctrl+C")}};
+$("#loader").addEventListener("change",()=>{$("#lver").value="";loadLoaderVersions()});
+$("#mc").addEventListener("change",loadLoaderVersions);
+$("#btnTheme").onclick=()=>{const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches;r.dataset.theme=dark?"light":"dark"};
+$("#btnReset").onclick=()=>{if(confirm("¿Vaciar el borrador del modpack? Quedará como cambios pendientes y podrás descartarlos.")){mods=[];overrideFiles=[];overrideEntries.clear();FIELDS.filter(f=>!f.startsWith("cf")&&f!=="pId").forEach(f=>$("#"+f).value=f==="loader"?"fabric":"");render()}};
+
+const hadDraft=load();
+if(!$("#pId").value)$("#pId").value=uid();
+if(hadDraft){if(!base.settings.pId)base.settings.pId=$("#pId").value}else{base=snapshot();library.activeId=$("#pId").value;library.packs[library.activeId]=captureCurrent()}
+render();loadMc();
+loadLoaderVersions().then(()=>{if(!hadDraft){base.settings=readSettings();render()}});
+</script>
+</body>
+</html>
