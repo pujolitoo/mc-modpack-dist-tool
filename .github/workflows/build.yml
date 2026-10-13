@@ -3,8 +3,8 @@ name: Build Villazucar modpack launcher
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - villa
 
 permissions:
   contents: write
@@ -47,7 +47,10 @@ jobs:
             asset: modpack-launcher-macos-x64
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout villa branch
+        uses: actions/checkout@v4
+        with:
+          ref: villa
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
