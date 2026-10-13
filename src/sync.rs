@@ -1,0 +1,219 @@
+//! Synchronizes the installation with the modpack: downloads/verifies mods, applies overrides and removes leftovers.
+
+use crate::msg::Reporter;
+use crate::pack::{effective_excluded, LoadedPack, ModEntry, ModState};
+use crate::util;
+use anyhow::{anyhow, bail, Result};
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs::{self, File};
+use std::io::{self, Cursor};
+use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
+use zip::ZipArchive;
+
+const STATE_FILE: &str = ".modpack-forge-state.json";
+const WORKERS: usize = 6;
+
+#[derive(Default, Serialize, Deserialize)]
+#[serde(default)]
+struct State {
+    pack_id: String,
+    pack_version: String,
+    /// Relative paths of mods installed by the launcher (only these are deleted during updates).
+    mods: Vec<String>,
+}
+
+pub fn sync_pack(pack: &LoadedPack, install: &Path, excluded: &HashSet<String>, rep: &Reporter) -> Result<()> {
+    fs::create_dir_all(install)?;
+    let mods_rel = pack.manifest.mods_dir();
+    let mods_dir = util::safe_join(install, &mods_rel)?;
+    fs::create_dir_all(&mods_dir)?;
+
+    let state_path = install.join(STATE_FILE);
+    let old: State = fs::read_to_string(&state_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+
+    // Client-side-only mods the player chose to exclude (filtered already: dependencies and required mods are never included).
+    let eff = effective_excluded(&pack.manifest, excluded);
+    let removed_by_player = |m: &&ModEntry| m.is_client_only() && eff.contains(&m.key());
+    let active: Vec<&ModEntry> = pack
+        .manifest
+        .mods
+        .iter()
+        .filter(|m| m.state() == ModState::Active && !removed_by_player(m))
+        .collect();
+    let skipped = pack.manifest.mods.iter().filter(|m| m.state() == ModState::Active && removed_by_player(m)).count();
+    if skipped > 0 {
+        rep.log(format!("Mods quitados por el jugador (se omiten o se eliminan): {skipped}"));
+    }
+    let mut wanted: Vec<String> = Vec::with_capacity(active.len());
+    for m in &active {
+        wanted.push(m.rel_path(&mods_rel)?);
+    }
+
+    // 1) Remove mods installed by the launcher that are no longer in the pack.
+    for rel in &old.mods {
+        if !wanted.contains(rel) {
+            if let Ok(p) = util::safe_join(install, rel) {
+                if p.is_file() && fs::remove_file(&p).is_ok() {
+                    rep.log(format!("Eliminado: {rel}"));
+                }
+            }
+        }
+    }
+
+    // 2) Descargar / extraer / verificar en paralelo.
+    let total = active.len();
+    rep.progress(0.0, format!("Comprobando {total} mods…"));
+    let next = AtomicUsize::new(0);
+    let done = AtomicUsize::new(0);
+    let failures: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    let warnings: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    let agent = util::agent();
+
+    std::thread::scope(|scope| {
+        for _ in 0..WORKERS.min(total.max(1)) {
+            let rep = rep.clone();
+            let (next, done, failures, warnings) = (&next, &done, &failures, &warnings);
+            let (agent, active, wanted) = (&agent, &active, &wanted);
+            scope.spawn(move || {
+                let mut archive = pack.archive().ok().flatten();
+                loop {
+                    let i = next.fetch_add(1, Ordering::SeqCst);
+                    if i >= active.len() {
+                        break;
+                    }
+                    let m = active[i];
+                    match ensure_mod(pack, &mut archive, agent, install, &wanted[i], m) {
+                        Ok(Some(how)) => rep.log(format!("{how}: {}", m.name)),
+                        Ok(None) => {}
+                        Err(e) => {
+                            let line = format!("{}: {e:#}", m.name);
+                            if m.required {
+                                failures.lock().unwrap().push(line);
+                            } else {
+                                warnings.lock().unwrap().push(line);
+                            }
+                        }
+                    }
+                    let d = done.fetch_add(1, Ordering::SeqCst) + 1;
+                    rep.progress(d as f32 / total as f32, format!("Mods {d}/{total}"));
+                }
+            });
+        }
+    });
+
+    for w in warnings.into_inner().unwrap() {
+        rep.log(format!("Aviso (mod opcional omitido) · {w}"));
+    }
+    let failures = failures.into_inner().unwrap();
+    if !failures.is_empty() {
+        bail!("No se pudieron preparar estos mods obligatorios:\n- {}", failures.join("\n- "));
+    }
+
+    // 3) Overrides: only if the pack changed or the file is missing (preserves your settings between sessions).
+    rep.busy("Applying configuration…");
+    let fresh = old.pack_id != pack.id() || old.pack_version != pack.version();
+    let mut applied = 0usize;
+    if let Some(mut ar) = pack.archive()? {
+        // Multiple possible folders (p. ej. Modrinth: overrides/ y client-overrides/); later ones override earlier ones.
+        for dir in pack.override_dirs() {
+            let prefix = format!("{}{}", pack.root(), dir);
+            for i in 0..ar.len() {
+                let mut f = ar.by_index(i)?;
+                if f.is_dir() {
+                    continue;
+                }
+                let name = f.name().to_string();
+                let Some(rel) = name.strip_prefix(&prefix) else { continue };
+                if rel.is_empty() {
+                    continue;
+                }
+                let target = util::safe_join(install, rel)?;
+                if target.exists() && !fresh {
+                    continue;
+                }
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                let mut out = File::create(&target)?;
+                io::copy(&mut f, &mut out)?;
+                applied += 1;
+            }
+        }
+    }
+    if applied > 0 {
+        rep.log(format!("Overrides aplicados: {applied} archivos"));
+    }
+
+    let state = State { pack_id: pack.id(), pack_version: pack.version().to_string(), mods: wanted };
+    fs::write(&state_path, serde_json::to_string_pretty(&state)?)?;
+    rep.progress(1.0, "Mods listos");
+    Ok(())
+}
+
+/// Ensures the mod JAR is present and correct in `mods/`. Returns how it was obtained, or `None` if it was already correct.
+fn ensure_mod<'a>(
+    pack: &'a LoadedPack,
+    archive: &mut Option<ZipArchive<Cursor<&'a [u8]>>>,
+    agent: &ureq::Agent,
+    install: &Path,
+    rel: &str,
+    m: &ModEntry,
+) -> Result<Option<&'static str>> {
+    let dest = util::safe_join(install, rel)?;
+    if util::verify_file(&dest, &m.file)? {
+        return Ok(None);
+    }
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let name = dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let tmp = dest.with_file_name(format!("{name}.part"));
+
+    let result = (|| -> Result<&'static str> {
+        let bundled = m.file.bundled_path.as_deref().filter(|p| !p.is_empty());
+        let mut how = "Extracted";
+        let from_zip = match (bundled, archive.as_mut()) {
+            (Some(b), Some(ar)) => match ar.by_name(&format!("{}{}", pack.root(), b)) {
+                Ok(mut f) => {
+                    let mut out = File::create(&tmp)?;
+                    io::copy(&mut f, &mut out)?;
+                    true
+                }
+                Err(_) => false,
+            },
+            _ => false,
+        };
+        if !from_zip {
+            let url = m.file.download_url.as_deref().filter(|u| !u.is_empty());
+            match url {
+                Some(u) => {
+                    util::download_to(agent, u, &tmp)?;
+                    how = "Descargado";
+                }
+                None if m.resolved == Some(false) => {
+                    bail!("mod sin resolver: no se pudo obtener su archivo de descarga (revisa la API key de CurseForge o vuelve a exportar el pack)")
+                }
+                None => bail!("no tiene URL de descarga ni archivo incluido en el ZIP"),
+            }
+        }
+        if !util::verify_file(&tmp, &m.file)? {
+            return Err(anyhow!("file hash or size does not match (corrupt or modified)"));
+        }
+        if dest.exists() {
+            fs::remove_file(&dest)?;
+        }
+        fs::rename(&tmp, &dest)?;
+        Ok(how)
+    })();
+
+    if tmp.exists() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result.map(Some)
+}

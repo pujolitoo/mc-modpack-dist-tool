@@ -1,0 +1,86 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  Modpack Forge Launcher · configuration AT BUILD TIME
+#
+#  Edit this file BEFORE running `cargo build --release`.
+#  Values are embedded in the executable: players only need
+#  give them that single file (the .exe), with no separate ZIP or configuration.
+#  If you change anything here, rebuild.
+# ═══════════════════════════════════════════════════════════════════════════
+
+[launcher]
+# Window title (optional).
+title = "Modpack Forge Launcher"
+
+# Launcher self-update. URL where you publish the .exe (e.g. Dropbox).
+# When you REPLACE that file, players will receive the new version when they open the
+# launcher (it downloads the file, replaces itself and restarts). Empty = disabled.
+#   update_url = "https://www.dropbox.com/scl/fi/xxxxx/modpack-launcher.exe?rlkey=xxxxx&dl=0"
+#
+# · Paste the **Copy link** URL as-is: the launcher converts it to a direct download (dl=1).
+# · To update, upload the new version with the SAME name in the same folder and choose
+#   **Replace**: this keeps the shared link unchanged. If you delete and re-upload, the link changes.
+# · Use a separate link for each operating system: the Windows .exe does not work on Linux or macOS.
+# · The folder containing the .exe must be writable (avoid Program Files).
+update_url = ""
+
+[modpack]
+# Source of the modpack (the ZIP exported from Modpack Forge, or its modpack.json).
+# Fill in ONE option, or both (see below).
+
+# ── Option A: download URL ───────────────────────────────────────────
+# The launcher downloads the ZIP on startup and caches it; it only downloads it again
+# if the server reports a change (ETag). This lets you publish
+# pack updates without rebuilding or redistributing the .exe.
+#   url = "https://midominio.com/packs/mi-pack.zip"
+url = ""
+
+# ── Option B: ZIP embedded in the executable ──────────────────────────────
+# Path RELATIVE TO THIS FOLDER (the project folder containing this file), or
+# absolute. The ZIP is placed INSIDE the .exe during the build, so the .exe is the
+# only file you need to distribute. Examples:
+#   path = "modpack.zip"            → junto a launcher.toml
+#   path = "packs/mi-pack.zip"      → en una subcarpeta
+#   path = "../exports/mi-pack.zip" → en la carpeta superior
+#   path = "C:/Packs/mi-pack.zip"   → ruta absoluta
+#path = "modpack.zip"
+
+# If both are set, `url` takes precedence, and the embedded ZIP is used as a fallback if there is no
+# connection and no cached copy exists yet.
+
+# ── Formato del archivo ────────────────────────────────────────────────────
+# Type of modpack in the ZIP above (`path`) or downloaded from (`url`):
+#   "auto"       → lo detecta por su contenido (recomendado)
+#   "forge"      → exportado desde Modpack Forge (contiene modpack.json)
+#   "curseforge" → exportado desde la app de CurseForge (contiene manifest.json)
+#   "modrinth"   → .mrpack de Modrinth (contiene modrinth.index.json)
+#
+# · Modrinth works without any additional configuration: the .mrpack already includes URLs and hashes.
+# · CurseForge only provides mod IDs: converting them into downloads requires
+#   the CurseForge API → fill in [curseforge] api_key below.
+format = "auto"
+
+[requirements]
+# Minimum TOTAL system RAM (in MB) for playing. If the system has less, the
+# launcher displays a warning when PLAY is clicked (the player can ignore it).
+# 0 = use the modpack's own recommended RAM value (runtime.recommendedRamMb).
+min_ram_mb = 0
+
+[microsoft]
+# Azure Application (client) ID for Microsoft sign-in.
+# Empty = use the PortableMC project ID. If you plan to distribute the launcher
+# publicly, it is recommended that you register your own and enter it here:
+# https://minecraft.wiki/w/Microsoft_authentication
+app_id = ""
+
+[curseforge]
+# Only required if the modpack is a ZIP exported from CurseForge.
+# API key gratuita: https://console.curseforge.com
+#
+# ⚠ The key is stored INSIDE the executable, and a technically skilled player could
+#   extract it. If this is a concern, leave api_key empty and use your own proxy
+#   (api_base) that adds the key on the server.
+api_key = ""
+
+# API base URL. Empty = https://api.curseforge.com (the official endpoint).
+# Enter your proxy URL if you do not want to include the key in the executable.
+api_base = ""

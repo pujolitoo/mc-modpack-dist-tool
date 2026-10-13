@@ -1,0 +1,46 @@
+# Builds the launcher for Windows, Linux and macOS on GitHub machines (which already include a C compiler).
+# Usage: **Actions** tab "Actions" → "Compilar launcher" → "Run workflow". Build binaries are available in "Artifacts".
+name: Compilar launcher
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-x64, os: windows-latest, target: "", args: "", path: "target/release/modpack-launcher.exe" }
+          - { name: linux-x64, os: ubuntu-latest, target: "", args: "", path: "target/release/modpack-launcher" }
+          - { name: macos-arm64, os: macos-latest, target: "", args: "", path: "target/release/modpack-launcher" }
+          # Intel: built on the arm64 machine (Apple clang generates both architectures).
+          - { name: macos-x64, os: macos-latest, target: "x86_64-apple-darwin", args: "--target x86_64-apple-darwin", path: "target/x86_64-apple-darwin/release/modpack-launcher" }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencias del sistema (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libxkbcommon-dev libwayland-dev libx11-dev libssl-dev libgl1-mesa-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Compilar
+        run: cargo build --release ${{ matrix.args }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: modpack-launcher-${{ matrix.name }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error
