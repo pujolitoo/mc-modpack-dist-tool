@@ -92,25 +92,24 @@ jobs:
           PY
 
 
+      
       - name: Configure API key
         env:
-          API_KEY_BASE64: "JDJhJDEwJGJMNGJJTDVwVVdxZmNPN0tRdG5NUmVha3d0ZkhiTktoNnYxdVRwS2x6aHdvdWVFSlFuUG5t"
+          API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
         shell: bash
         run: |
           python - <<'PY'
           import os
           import re
-          import base64
           import json
           from pathlib import Path
 
           path = Path("launcher.toml")
           content = path.read_text(encoding="utf-8")
 
-          api_key = base64.b64decode(
-              os.environ["API_KEY_BASE64"],
-              validate=True
-          ).decode("utf-8")
+          api_key = os.environ.get("API_KEY", "")
+          if not api_key:
+              raise RuntimeError("CURSEFORGE_API_KEY secret is missing")
 
           section = re.search(
               r"(?ms)^\[curseforge\]\s*\n.*?(?=^\[|\Z)",
@@ -118,15 +117,13 @@ jobs:
           )
 
           if not section:
-              raise RuntimeError(
-                  "Missing [curseforge] section in launcher.toml"
-              )
+              raise RuntimeError("Missing [curseforge] section")
 
           block = section.group(0)
+          key_line = re.compile(r"(?m)^(\s*api_key\s*=\s*).*$")
 
-          if re.search(r"(?m)^\s*api_key\s*=", block):
-              block = re.sub(
-                  r'(?m)^(\s*api_key\s*=\s*).*$',
+          if key_line.search(block):
+              block = key_line.sub(
                   lambda m: m.group(1) + json.dumps(api_key),
                   block,
                   count=1
@@ -137,10 +134,9 @@ jobs:
           content = content[:section.start()] + block + content[section.end():]
           path.write_text(content, encoding="utf-8")
 
-          print("CurseForge API key configured successfully.")
+          print("CurseForge API key configured.")
           PY
 
-        
        
       - name: Build launcher
         run: cargo build --release ${{ matrix.args }}
