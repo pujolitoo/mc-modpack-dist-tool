@@ -360,7 +360,7 @@ fn apply_app_bundle(
         for index in 0..archive.len() {
             let mut entry = archive.by_index(index)?;
 
-            let Some(entry_path) = entry.enclosed_name().map(Path::to_path_buf)
+            let Some(entry_path) = entry.enclosed_name()
             else {
                 continue;
             };
