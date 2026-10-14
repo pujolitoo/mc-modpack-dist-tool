@@ -39,6 +39,7 @@ jobs:
             path: target/release/modpack-launcher
             asset: modpack-launcher-macos-arm64
             app_asset: modpack-launcher-macos-arm64-app.zip
+            app_asset_exe: modpack-launcher-macos-arm64-app
 
           - name: macos-x64
             os: macos-latest
@@ -47,6 +48,7 @@ jobs:
             path: target/x86_64-apple-darwin/release/modpack-launcher
             asset: modpack-launcher-macos-x64
             app_asset: modpack-launcher-macos-x64-app.zip
+            app_asset_exe: modpack-launcher-macos-x64-app
 
     steps:
       - name: Checkout villa branch
@@ -145,11 +147,51 @@ jobs:
        
       - name: Build launcher
         run: cargo build --release ${{ matrix.args }}
+        
+      - name: Configure update URL for appbundle
+        if: runner.os == 'macOS'
+        env:
+          UPDATE_URL: https://github.com/${{ github.repository }}/releases/latest/download/${{ matrix.app_asset }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("launcher.toml")
+          content = path.read_text(encoding="utf-8")
+
+          updated, count = re.subn(
+              r'(?m)^(\s*update_url\s*=\s*).*$',
+              lambda match: match.group(1) + '"' + os.environ["UPDATE_URL"] + '"',
+              content,
+              count=1,
+          )
+
+          if count != 1:
+              raise RuntimeError("Could not find update_url in launcher.toml")
+
+          path.write_text(updated, encoding="utf-8")
+          print("Updated launcher.toml with the release URL.")
+          PY
 
       - name: Prepare release asset
         env:
           SOURCE_PATH: ${{ matrix.path }}
           ASSET_NAME: ${{ matrix.asset }}
+        run: |
+          python -c "import os,pathlib,shutil; src=pathlib.Path(os.environ['SOURCE_PATH']); dst=pathlib.Path('dist')/os.environ['ASSET_NAME']; dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst); print(dst)"
+
+      - name: Rebuild launcher with update_url for MacOS Appbundle
+        if: runner.os == 'macOS'
+        run: cargo build --release ${{ matrix.args }}
+        
+      - name: Prepare release asset for appbundle
+        if: runner.os == 'macOS'
+        env:
+          SOURCE_PATH: ${{ matrix.path }}
+          ASSET_NAME: ${{ matrix.app_asset_exe }}
         run: |
           python -c "import os,pathlib,shutil; src=pathlib.Path(os.environ['SOURCE_PATH']); dst=pathlib.Path('dist')/os.environ['ASSET_NAME']; dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst); print(dst)"
 
