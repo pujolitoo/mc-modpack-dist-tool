@@ -9,7 +9,7 @@
 
 [launcher]
 # Window title (optional).
-title = "Modpack Forge Launcher"
+title = "Villazucar Launcher"
 
 # Launcher self-update. URL where you publish the .exe (e.g. Dropbox).
 # When you REPLACE that file, players will receive the new version when they open the
