@@ -259,13 +259,24 @@ fn apply(exe: &PathBuf, url: &str, rep: &Reporter) -> Result<Outcome> {
 
 /// Borra restos de actualizaciones anteriores (el .exe viejo y descargas incompletas). Se llama al arrancar.
 pub fn cleanup_old() {
-    if let Ok(exe) = std::env::current_exe() {
-        if let (Some(dir), Some(name)) = (exe.parent(), exe.file_name()) {
-            let name = name.to_string_lossy();
-            let _ = fs::remove_file(dir.join(format!("{name}.old")));
-            let _ = fs::remove_file(dir.join(format!("{name}.new")));
-        }
+    let Ok(exe) = std::env::current_exe() else { return };
+    let (Some(dir), Some(name)) = (exe.parent(), exe.file_name()) else { return };
+    let name = name.to_string_lossy().to_string();
+
+    let _ = fs::remove_file(dir.join(format!("{name}.new")));
+
+    let old = dir.join(format!("{name}.old"));
+    if !old.exists() {
+        return;
     }
+    std::thread::spawn(move || {
+        for _ in 0..120 {
+            if !old.exists() || fs::remove_file(&old).is_ok() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    });
 }
 
 /// Launches the newly installed executable and closes the current one.
