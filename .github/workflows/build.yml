@@ -224,9 +224,9 @@ jobs:
               <key>CFBundleIdentifier</key>
               <string>com.villazucar.modpacklauncher</string>
               <key>CFBundleName</key>
-              <string>Villazucar Modpack Launcher</string>
+              <string>EVillazucar Modpack Launcher</string>
               <key>CFBundleDisplayName</key>
-              <string>Villazucar Modpack Launcher</string>
+              <string>EVillazucar Modpack Launcher</string>
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleVersion</key>
