@@ -38,6 +38,7 @@ jobs:
             args: ""
             path: target/release/modpack-launcher
             asset: modpack-launcher-macos-arm64
+            app_asset: modpack-launcher-macos-arm64-app.zip
 
           - name: macos-x64
             os: macos-latest
@@ -45,6 +46,7 @@ jobs:
             args: --target x86_64-apple-darwin
             path: target/x86_64-apple-darwin/release/modpack-launcher
             asset: modpack-launcher-macos-x64
+            app_asset: modpack-launcher-macos-x64-app.zip
 
     steps:
       - name: Checkout villa branch
@@ -150,6 +152,64 @@ jobs:
           ASSET_NAME: ${{ matrix.asset }}
         run: |
           python -c "import os,pathlib,shutil; src=pathlib.Path(os.environ['SOURCE_PATH']); dst=pathlib.Path('dist')/os.environ['ASSET_NAME']; dst.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(src,dst); print(dst)"
+
+
+      - name: Create macOS App Bundle
+        if: runner.os == 'macOS'
+        env:
+          SOURCE_PATH: ${{ matrix.path }}
+          APP_ASSET: ${{ matrix.app_asset }}
+          VERSION: ${{ github.run_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP="dist/Modpack Launcher.app"
+          CONTENTS="$APP/Contents"
+          MACOS="$CONTENTS/MacOS"
+
+          mkdir -p "$MACOS"
+          cp "$SOURCE_PATH" "$MACOS/modpack-launcher"
+          chmod +x "$MACOS/modpack-launcher"
+
+          cat > "$CONTENTS/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>modpack-launcher</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.villazucar.modpacklauncher</string>
+              <key>CFBundleName</key>
+              <string>Modpack Launcher</string>
+              <key>CFBundleDisplayName</key>
+              <string>Villazucar Modpack Launcher</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleVersion</key>
+              <string>${VERSION}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>11.0</string>
+          </dict>
+          </plist>
+          EOF
+
+          plutil -lint "$CONTENTS/Info.plist"
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP" "dist/$APP_ASSET"
+
+      - name: Upload macOS App Bundle
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.name }}-app
+          path: dist/${{ matrix.app_asset }}
+          if-no-files-found: error
+
 
       - uses: actions/upload-artifact@v4
         with:
