@@ -9,6 +9,11 @@
 //!  - Only installs the file if it appears to be an executable for this system (avoids installing Dropbox's HTML page).
 //!  - If the downloaded file is identical to the current one, it is not installed (avoids restart loops caused by unstable ETags).
 //!  - Si falla el reemplazo, restaura el ejecutable anterior.
+//!
+//! macOS app bundles: if the update link points to a zipped `.app` (the URL ends in `.zip`) and the launcher runs from
+//! inside a `.app`, the whole bundle is replaced instead of just the executable. The new bundle is extracted next to
+//! the old one and a small helper script swaps them once this process has exited (a running app cannot replace itself),
+//! then reopens the app. If anything goes wrong the previous version is put back.
 
 use crate::config;
 use crate::msg::Reporter;
@@ -23,7 +28,8 @@ pub enum Outcome {
     /// No hay `update_url` configurada.
     Disabled,
     UpToDate,
-    /// Ya se reemplazó el ejecutable: hay que reiniciar con esta ruta.
+    /// The executable has been replaced: restart using this path.
+    /// (macOS app bundles: the path of the helper script that installs the new bundle and reopens the app.)
     Updated(PathBuf),
 }
 
@@ -141,17 +147,25 @@ fn looks_like_executable(path: &Path) -> Result<bool> {
 pub fn run(rep: &Reporter) -> Result<Outcome> {
     let Some(link) = config::update_url() else { return Ok(Outcome::Disabled) };
     let url = direct_url(link);
+    let exe = std::env::current_exe().context("No se pudo localizar el ejecutable del launcher")?;
+    // A zipped .app as the update asset needs different handling, and can fail early with a helpful message.
+    let bundle = is_bundle_update(&exe, &url)?;
     rep.busy("Comprobando actualizaciones del launcher…");
 
     let remote = fetch_remote(&url)?;
     let state = load_state();
-    let exe = std::env::current_exe().context("No se pudo localizar el ejecutable del launcher")?;
     let own_size = fs::metadata(&exe)?.len();
 
     let has_baseline = state.url == url;
     let newer = if !has_baseline {
-        // No previous reference: a different file size is the only reliable indication of a new version.
-        remote.size.map_or(false, |s| s != own_size)
+        if bundle {
+            // The published file is a zipped bundle, so its size cannot be compared with the executable's.
+            // Assume the installed version is the published one and remember it as the reference.
+            false
+        } else {
+            // No previous reference: a different file size is the only reliable indication of a new version.
+            remote.size.map_or(false, |s| s != own_size)
+        }
     } else if let (Some(a), Some(b)) = (&remote.etag, &state.etag) {
         a != b
     } else if let (Some(a), Some(b)) = (&remote.last_modified, &state.last_modified) {
@@ -169,7 +183,7 @@ pub fn run(rep: &Reporter) -> Result<Outcome> {
         return Ok(Outcome::UpToDate);
     }
     rep.log("A new launcher version is available: downloading…");
-    apply(&exe, &url, rep)
+    apply(&exe, &url, rep, bundle)
 }
 
 /// Como `run`, pero un fallo (sin red, permisos…) solo se anota en el registro. Devuelve la ruta si hay que reiniciar.
@@ -185,65 +199,42 @@ pub fn run_or_log(rep: &Reporter) -> Option<PathBuf> {
 }
 
 
-/// On macOS, checks whether the download is a ZIP containing a valid app bundle
-/// with the same executable as the currently running launcher.
-#[cfg(target_os = "macos")]
-fn is_app_bundle_archive(path: &Path, executable_name: &str) -> Result<bool> {
-    let file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(_) => return Ok(false),
-    };
-
-    let archive = match zip::ZipArchive::new(file) {
-        Ok(archive) => archive,
-        Err(_) => return Ok(false),
-    };
-
-    let mut app_roots = std::collections::BTreeSet::new();
-
-    for name in archive.file_names() {
-        let path = Path::new(name);
-        let components: Vec<_> = path.components().collect();
-
-        for (index, component) in components.iter().enumerate() {
-            if component.as_os_str().to_string_lossy().ends_with(".app") {
-                let root = components[..=index]
-                    .iter()
-                    .map(|c| c.as_os_str())
-                    .collect::<PathBuf>();
-
-                app_roots.insert(root);
-                break;
-            }
-        }
-    }
-
-    for root in app_roots {
-        let info = root.join("Contents/Info.plist");
-        let executable = root.join("Contents/MacOS").join(executable_name);
-
-        let mut has_info = false;
-        let mut has_executable = false;
-
-        for name in archive.file_names() {
-            if Path::new(name) == info {
-                has_info = true;
-            }
-
-            if Path::new(name) == executable {
-                has_executable = true;
-            }
-
-            if has_info && has_executable {
-                return Ok(true);
-            }
-        }
-    }
-
-    Ok(false)
+/// If `exe` lives inside a macOS app bundle (`Foo.app/Contents/MacOS/<exe>`), returns the path of `Foo.app`.
+fn app_bundle_root(exe: &Path) -> Option<PathBuf> {
+    let macos = exe.parent()?;
+    let contents = macos.parent()?;
+    let app = contents.parent()?;
+    let is_bundle = macos.file_name()? == "MacOS" && contents.file_name()? == "Contents" && app.extension()? == "app";
+    if is_bundle { Some(app.to_path_buf()) } else { None }
 }
 
-/// Installs an app bundle ZIP after the current launcher exits.
+/// Is the published update a zipped macOS app bundle that can be installed over the running one?
+///
+/// Returns an error (before downloading anything) when the update is a bundle but cannot be installed:
+/// the launcher is not running from a `.app`, or macOS is running it from a temporary read-only location.
+fn is_bundle_update(exe: &Path, url: &str) -> Result<bool> {
+    let path_part = url.split(|c: char| c == '?' || c == '#').next().unwrap_or("").to_lowercase();
+    if !cfg!(target_os = "macos") || !path_part.ends_with(".zip") {
+        return Ok(false);
+    }
+    let Some(app) = app_bundle_root(exe) else {
+        bail!("the update is a macOS app bundle (.zip) but the launcher is not running from a .app");
+    };
+    // "App Translocation": an app opened straight from Downloads runs from a randomized read-only copy.
+    if app.to_string_lossy().contains("/AppTranslocation/") {
+        bail!(
+            "macOS is running the app from a temporary read-only location (it was opened straight from Downloads). \
+             Move it to /Applications (or any normal folder) and open it again so it can update itself"
+        );
+    }
+    Ok(true)
+}
+
+/// Installs a zipped app bundle over the running one.
+///
+/// The files are extracted next to the app, and a helper script swaps the bundles after this process exits
+/// (a running app cannot replace itself) and then reopens the app. The extracted bundle has no quarantine flag,
+/// so Gatekeeper does not ask again.
 #[cfg(target_os = "macos")]
 fn apply_app_bundle(
     exe: &Path,
@@ -256,224 +247,188 @@ fn apply_app_bundle(
 ) -> Result<Outcome> {
     use std::os::unix::fs::PermissionsExt;
 
-    let macos_dir = exe
-        .parent()
-        .ok_or_else(|| anyhow!("invalid executable path"))?;
-
-    let contents_dir = macos_dir
-        .parent()
-        .ok_or_else(|| anyhow!("could not find Contents directory"))?;
-
-    let app_path = contents_dir
-        .parent()
-        .ok_or_else(|| anyhow!("could not find the app bundle"))?;
-
-    if app_path.extension().and_then(|v| v.to_str()) != Some("app") {
-        bail!("the launcher is not running from a .app bundle");
-    }
-
-    let app_parent = app_path
-        .parent()
-        .ok_or_else(|| anyhow!("the app bundle has no parent directory"))?;
-
+    let app_path =
+        app_bundle_root(exe).ok_or_else(|| anyhow!("the launcher is not running from a .app bundle"))?;
+    let app_parent = app_path.parent().ok_or_else(|| anyhow!("the app bundle has no parent directory"))?;
     let app_name = app_path
         .file_name()
-        .ok_or_else(|| anyhow!("invalid app bundle name"))?;
+        .ok_or_else(|| anyhow!("invalid app bundle name"))?
+        .to_string_lossy()
+        .to_string();
+    let executable_name = exe.file_name().ok_or_else(|| anyhow!("invalid executable name"))?.to_os_string();
 
     let pid = std::process::id();
-
-    let staging = app_parent.join(format!(
-        ".{}.update-staging-{pid}",
-        app_name.to_string_lossy()
-    ));
-
-    let backup = app_parent.join(format!(
-        ".{}.update-backup-{pid}",
-        app_name.to_string_lossy()
-    ));
-
-    if staging.exists() {
-        fs::remove_dir_all(&staging)?;
-    }
-
-    if backup.exists() {
-        fs::remove_dir_all(&backup)?;
-    }
-
-    fs::create_dir_all(&staging)?;
+    let staging = app_parent.join(format!(".{app_name}.update-staging-{pid}"));
+    let backup = app_parent.join(format!(".{app_name}.update-backup-{pid}"));
+    let _ = fs::remove_dir_all(&staging);
+    let _ = fs::remove_dir_all(&backup);
+    fs::create_dir_all(&staging).map_err(|e| {
+        let _ = fs::remove_file(downloaded_zip);
+        anyhow!("cannot write next to the app in {} ({e}); does your user have write permissions there?", app_parent.display())
+    })?;
 
     let extract_result = (|| -> Result<()> {
-        let file = fs::File::open(downloaded_zip)?;
-        let mut archive = zip::ZipArchive::new(file)
+        let mut archive = zip::ZipArchive::new(fs::File::open(downloaded_zip)?)
             .context("the download is not a valid ZIP archive")?;
 
-        let executable_name = exe
-            .file_name()
-            .ok_or_else(|| anyhow!("invalid executable name"))?;
-
+        // Find the .app folder inside the ZIP. The `__MACOSX/` metadata folder that `ditto` adds is ignored
+        // because it contains no Info.plist or executable.
+        let names: Vec<PathBuf> = archive.file_names().map(PathBuf::from).collect();
         let mut roots = std::collections::BTreeSet::new();
-
-        for name in archive.file_names() {
-            let entry_path = Path::new(name);
-            let components: Vec<_> = entry_path.components().collect();
-
-            for (index, component) in components.iter().enumerate() {
-                if component.as_os_str().to_string_lossy().ends_with(".app") {
-                    roots.insert(
-                        components[..=index]
-                            .iter()
-                            .map(|c| c.as_os_str())
-                            .collect::<PathBuf>(),
-                    );
-                    break;
-                }
+        for name in &names {
+            let components: Vec<_> = name.components().collect();
+            if let Some(i) = components.iter().position(|c| c.as_os_str().to_string_lossy().ends_with(".app")) {
+                roots.insert(components[..=i].iter().map(|c| c.as_os_str()).collect::<PathBuf>());
             }
         }
-
         let root = roots
             .into_iter()
             .find(|root| {
-                let info = root.join("Contents/Info.plist");
-                let executable = root.join("Contents/MacOS").join(executable_name);
-
-                let mut info_found = false;
-                let mut executable_found = false;
-
-                for name in archive.file_names() {
-                    let path = Path::new(name);
-
-                    if path == info {
-                        info_found = true;
-                    }
-
-                    if path == executable {
-                        executable_found = true;
-                    }
-                }
-
-                info_found && executable_found
+                names.contains(&root.join("Contents/Info.plist"))
+                    && names.contains(&root.join("Contents/MacOS").join(&executable_name))
             })
-            .ok_or_else(|| {
-                anyhow!("the ZIP does not contain a valid launcher app bundle")
-            })?;
+            .ok_or_else(|| anyhow!("the ZIP does not contain a valid launcher app bundle"))?;
 
         for index in 0..archive.len() {
             let mut entry = archive.by_index(index)?;
-
-            let Some(entry_path) = entry.enclosed_name()
-            else {
-                continue;
-            };
-
-            let Ok(relative) = entry_path.strip_prefix(&root) else {
-                continue;
-            };
-
+            let Some(entry_path) = entry.enclosed_name() else { continue };
+            let Ok(relative) = entry_path.strip_prefix(&root) else { continue };
             if relative.as_os_str().is_empty() {
                 continue;
             }
-
             let output = staging.join(relative);
 
             if entry.is_dir() {
                 fs::create_dir_all(&output)?;
                 continue;
             }
-
             if let Some(parent) = output.parent() {
                 fs::create_dir_all(parent)?;
             }
-
-            let mut target = fs::File::create(&output)?;
-            std::io::copy(&mut entry, &mut target)?;
-
-            if let Some(mode) = entry.unix_mode() {
-                fs::set_permissions(
-                    &output,
-                    fs::Permissions::from_mode(mode & 0o777),
-                )?;
+            let mode = entry.unix_mode().unwrap_or(0o644);
+            if mode & 0o170000 == 0o120000 {
+                // A symbolic link: the entry's content is the link target.
+                let mut target = String::new();
+                entry.read_to_string(&mut target)?;
+                std::os::unix::fs::symlink(target.trim_end_matches('\0'), &output)?;
+                continue;
             }
+            let mut out = fs::File::create(&output)?;
+            std::io::copy(&mut entry, &mut out)?;
+            fs::set_permissions(&output, fs::Permissions::from_mode(mode & 0o777))?;
         }
 
-        let staged_executable = staging
-            .join("Contents/MacOS")
-            .join(executable_name);
-
-        if !staged_executable.is_file()
-            || !staging.join("Contents/Info.plist").is_file()
-        {
+        let staged = staging.join("Contents/MacOS").join(&executable_name);
+        if !staged.is_file() || !staging.join("Contents/Info.plist").is_file() {
             bail!("the extracted app bundle is incomplete");
         }
-
-        let mut permissions =
-            fs::metadata(&staged_executable)?.permissions();
-
+        let mut permissions = fs::metadata(&staged)?.permissions();
         permissions.set_mode(permissions.mode() | 0o111);
-
-        fs::set_permissions(&staged_executable, permissions)?;
-
+        fs::set_permissions(&staged, permissions)?;
         Ok(())
     })();
 
+    let _ = fs::remove_file(downloaded_zip);
     if let Err(error) = extract_result {
         let _ = fs::remove_dir_all(&staging);
-        let _ = fs::remove_file(downloaded_zip);
-
         return Err(error.context("could not prepare the downloaded app bundle"));
     }
 
-    fn shell_quote(value: &std::ffi::OsStr) -> String {
-        let value = value.to_string_lossy();
-        format!("'{}'", value.replace('\'', "'\\''"))
+    // Same executable as the one already running: nothing to install (also avoids restart loops).
+    let staged_exe = staging.join("Contents/MacOS").join(&executable_name);
+    if util::hash_file(&staged_exe, "sha256")? == util::hash_file(exe, "sha256")? {
+        let _ = fs::remove_dir_all(&staging);
+        save_state(url, etag, last_modified, Some(size));
+        rep.log("Launcher is already up to date.");
+        return Ok(Outcome::UpToDate);
     }
 
-    let helper = util::app_data_dir()
-        .join(format!("update-app-bundle-{pid}.sh"));
+    fn shell_quote(value: &std::ffi::OsStr) -> String {
+        format!("'{}'", value.to_string_lossy().replace('\'', "'\\''"))
+    }
 
+    let helper = util::app_data_dir().join(format!("update-app-bundle-{pid}.sh"));
     if let Some(parent) = helper.parent() {
         fs::create_dir_all(parent)?;
     }
-
     let script = format!(
-        "#!/bin/sh\n\
-         set -eu\n\
-         parent=\"$PPID\"\n\
-         while kill -0 \"$parent\" 2>/dev/null; do sleep 0.2; done\n\
-         app={}\n\
-         staging={}\n\
-         backup={}\n\
-         if [ -e \"$backup\" ]; then rm -rf \"$backup\"; fi\n\
-         if [ -e \"$app\" ]; then mv \"$app\" \"$backup\"; fi\n\
-         if ! mv \"$staging\" \"$app\"; then \
-             [ ! -e \"$backup\" ] || mv \"$backup\" \"$app\"; exit 1; \
-         fi\n\
-         rm -rf \"$backup\" || true\n\
-         exec /usr/bin/open -n \"$app\" --args \"$@\"\n",
-        shell_quote(app_path.as_os_str()),
-        shell_quote(staging.as_os_str()),
-        shell_quote(backup.as_os_str())
+        r#"#!/bin/sh
+# Waits for the launcher to exit, swaps the app bundle and reopens it.
+parent="$PPID"
+while kill -0 "$parent" 2>/dev/null; do sleep 0.2; done
+app={app}
+staging={staging}
+backup={backup}
+state={state}
+rm -rf "$backup"
+if mv "$app" "$backup" && mv "$staging" "$app"; then
+    rm -rf "$backup"
+else
+    # Roll back so the previous version keeps working, and forget the saved update state so it is retried.
+    [ -e "$app" ] || mv "$backup" "$app"
+    rm -rf "$staging"
+    rm -f "$state"
+fi
+rm -f "$0"
+exec /usr/bin/open -n "$app" --args "$@"
+"#,
+        app = shell_quote(app_path.as_os_str()),
+        staging = shell_quote(staging.as_os_str()),
+        backup = shell_quote(backup.as_os_str()),
+        state = shell_quote(state_path().as_os_str()),
     );
-
     fs::write(&helper, script)?;
     fs::set_permissions(&helper, fs::Permissions::from_mode(0o700))?;
 
-    let _ = fs::remove_file(downloaded_zip);
-
     save_state(url, etag, last_modified, Some(size));
-
     rep.log("App bundle update prepared; it will be installed after the launcher exits.");
-
     Ok(Outcome::Updated(helper))
 }
 
+/// macOS: removes leftovers of an interrupted bundle update (staging/backup folders, the downloaded ZIP, helper scripts).
+#[cfg(target_os = "macos")]
+fn cleanup_bundle_leftovers(exe: &Path) {
+    if let Some(app) = app_bundle_root(exe) {
+        if let (Some(parent), Some(name)) = (app.parent(), app.file_name()) {
+            let name = name.to_string_lossy();
+            let prefixes = [format!(".{name}.update-staging-"), format!(".{name}.update-backup-")];
+            if let Ok(entries) = fs::read_dir(parent) {
+                for entry in entries.flatten() {
+                    let file_name = entry.file_name().to_string_lossy().to_string();
+                    if prefixes.iter().any(|p| file_name.starts_with(p.as_str())) {
+                        let _ = fs::remove_dir_all(entry.path());
+                    }
+                }
+            }
+        }
+    }
+    let data = util::app_data_dir();
+    let _ = fs::remove_file(data.join("launcher-update.zip"));
+    if let Ok(entries) = fs::read_dir(&data) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if file_name.starts_with("update-app-bundle-") && file_name.ends_with(".sh") {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    }
+}
 
-fn apply(exe: &PathBuf, url: &str, rep: &Reporter) -> Result<Outcome> {
+fn apply(exe: &PathBuf, url: &str, rep: &Reporter, bundle: bool) -> Result<Outcome> {
     let dir = exe.parent().ok_or_else(|| anyhow!("invalid launcher path"))?;
     let fname = exe
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .ok_or_else(|| anyhow!("invalid launcher path"))?;
-    let new_path = dir.join(format!("{fname}.new"));
+    // A bundle ZIP is downloaded outside the app (the app folder is not touched until the swap).
+    let new_path = if bundle {
+        util::app_data_dir().join("launcher-update.zip")
+    } else {
+        dir.join(format!("{fname}.new"))
+    };
+    if let Some(parent) = new_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let old_path = dir.join(format!("{fname}.old"));
     let cleanup = || {
         let _ = fs::remove_file(&new_path);
@@ -500,28 +455,14 @@ fn apply(exe: &PathBuf, url: &str, rep: &Reporter) -> Result<Outcome> {
         return Err(e.context("launcher download failed"));
     }
     let size = fs::metadata(&new_path)?.len();
-	
-	
-	#[cfg(target_os = "macos")]
-	{
-		let executable_name = exe
-			.file_name()
-			.and_then(|n| n.to_str())
-			.unwrap_or("modpack-launcher");
 
-		if is_app_bundle_archive(&new_path, executable_name)? {
-			return apply_app_bundle(
-				exe,
-				&new_path,
-				url,
-				&etag,
-				&last_modified,
-				size,
-				rep,
-			);
-		}
-	}
-
+    #[cfg(target_os = "macos")]
+    {
+        if bundle {
+            return apply_app_bundle(exe, &new_path, url, &etag, &last_modified, size, rep);
+        }
+    }
+    let _ = bundle; // only used on macOS
 
     if !looks_like_executable(&new_path)? {
         cleanup();
@@ -565,6 +506,8 @@ fn apply(exe: &PathBuf, url: &str, rep: &Reporter) -> Result<Outcome> {
 /// Borra restos de actualizaciones anteriores (el .exe viejo y descargas incompletas). Se llama al arrancar.
 pub fn cleanup_old() {
     let Ok(exe) = std::env::current_exe() else { return };
+    #[cfg(target_os = "macos")]
+    cleanup_bundle_leftovers(&exe);
     let (Some(dir), Some(name)) = (exe.parent(), exe.file_name()) else { return };
     let name = name.to_string_lossy().to_string();
 
