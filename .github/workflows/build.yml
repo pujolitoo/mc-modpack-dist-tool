@@ -244,13 +244,13 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent \
             "$APP" "dist/$APP_ASSET"
 
-      - name: Upload macOS App Bundle
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-${{ matrix.name }}-app
-          path: dist/${{ matrix.app_asset }}
-          if-no-files-found: error
+      #- name: Upload macOS App Bundle
+      #  if: runner.os == 'macOS'
+      #  uses: actions/upload-artifact@v4
+      #  with:
+      #    name: release-${{ matrix.name }}-app
+      #    path: dist/${{ matrix.app_asset }}
+      #    if-no-files-found: error
 
 
       - uses: actions/upload-artifact@v4
