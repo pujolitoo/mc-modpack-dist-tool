@@ -586,7 +586,7 @@ impl App {
                                     ver(&newp)
                                 )
                             }
-                            None => "Modpack loaded.".to_string(),
+                            None => "Modpack loaded..".to_string(),
                         };
                         self.push_log(summary.clone());
                         self.status = summary;
