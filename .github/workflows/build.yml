@@ -64,6 +64,21 @@ jobs:
             libxkbcommon-dev libwayland-dev libx11-dev \
             libssl-dev libgl1-mesa-dev
 
+      # Bundles a classic zlib (libz.so.1) into the Linux executable. On distributions that use zlib-ng the launcher
+      # restarts itself with it preloaded, so Forge/NeoForge can be installed there (see src/compat.rs).
+      - name: Bundle a classic zlib (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          lib="$(readlink -f "$(ldconfig -p | awk '/libz\.so\.1 /{print $NF; exit}')")"
+          echo "Runner zlib: $lib"
+          case "$lib" in *zlib-ng*) echo "The runner uses zlib-ng: refusing to bundle it"; exit 1;; esac
+          if grep -q "zlib-ng" "$lib"; then echo "The runner's libz mentions zlib-ng: refusing to bundle it"; exit 1; fi
+          mkdir -p assets/linux
+          cp "$lib" assets/linux/libz.so.1
+          ls -l assets/linux/libz.so.1
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}

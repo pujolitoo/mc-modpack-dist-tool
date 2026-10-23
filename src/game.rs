@@ -170,6 +170,20 @@ impl forge::Handler for ProgressHandler {
     }
 }
 
+/// Turns a loader installation error into a user-facing one, adding an explanation for a known cause.
+fn install_error(kind: &str, message: &str) -> anyhow::Error {
+    let mut text = format!("{kind} installation: {message}");
+    if message.to_lowercase().contains("processor") {
+        text.push_str(
+            "\nThe Forge/NeoForge installer checks the exact bytes of the files it generates, and that check failed. \
+             A known cause on Linux is zlib-ng replacing zlib (Fedora, openSUSE Tumbleweed, CachyOS...): it compresses \
+             differently, so the checksums do not match even though nothing is corrupted. The launcher normally works \
+             around this by itself; if it did not, start it with MODPACK_LAUNCHER_ZLIB=force.",
+        );
+    }
+    anyhow!(text)
+}
+
 /// Installs and launches the game and loader specified by the modpack. Returns the exit code.
 pub fn play(pack: &LoadedPack, params: &PlayParams, rep: &Reporter) -> Result<Option<i32>> {
     let m = &pack.manifest;
@@ -218,7 +232,7 @@ pub fn play(pack: &LoadedPack, params: &PlayParams, rep: &Reporter) -> Result<Op
             };
             let mut inst = forge::Installer::new(loader, version);
             configure(inst.mojang_mut(), &params.install, &auth);
-            inst.install(handler).map_err(|e| anyhow!("{kind} installation: {e}"))?
+            inst.install(handler).map_err(|e| install_error(&kind, &e.to_string()))?
         }
         other => bail!("Loader not supported by the launcher: «{other}»"),
     };

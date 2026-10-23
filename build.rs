@@ -84,6 +84,17 @@ fn main() {
         ));
     }
 
+    // Classic zlib for Linux builds (see src/compat.rs). CI copies it to assets/linux/libz.so.1 before building;
+    // without that file the build still works, it just cannot fix the zlib-ng problem by itself.
+    println!("cargo:rerun-if-changed=assets/linux/libz.so.1");
+    let zlib = manifest_dir.join("assets/linux/libz.so.1");
+    if env::var("CARGO_CFG_TARGET_OS").map(|os| os == "linux").unwrap_or(false) && zlib.is_file() {
+        let zlib_str = zlib.to_str().expect("the zlib path must be UTF-8");
+        out.push_str(&format!("pub static CLASSIC_ZLIB: Option<&[u8]> = Some(include_bytes!({:?}));\n", zlib_str));
+    } else {
+        out.push_str("pub static CLASSIC_ZLIB: Option<&[u8]> = None;\n");
+    }
+
     let dest = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR")).join("build_config.rs");
     fs::write(&dest, out).expect("no se pudo escribir build_config.rs");
 }

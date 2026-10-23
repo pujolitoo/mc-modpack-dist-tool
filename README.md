@@ -36,3 +36,9 @@ published file has been replaced; if so, it downloads it, replaces itself and re
 using the SAME filename (Dropbox's **Replace** option) so the shared link does not change. Dropbox may limit
 traffic from a single public link if you have many players.
 
+## Linux: Forge/NeoForge on systems with zlib-ng
+Distributions that replace zlib with zlib-ng (Fedora, openSUSE Tumbleweed, CachyOS...) make the Forge/NeoForge installer
+fail with "installer processor output corrupted": zlib-ng compresses differently, so the checksums of the files the
+installer generates do not match. Linux builds embed a classic `libz.so.1` (copied by CI into `assets/linux/`); when the
+launcher detects zlib-ng it restarts itself once with that library preloaded (`LD_PRELOAD`). Nothing to do on your side.
+`MODPACK_LAUNCHER_ZLIB=force` always does it, `MODPACK_LAUNCHER_ZLIB=off` never does. See `THIRD_PARTY_NOTICES.md`.
