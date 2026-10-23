@@ -37,7 +37,7 @@ update_url = ""
 # if the server reports a change (ETag). This lets you publish
 # pack updates without rebuilding or redistributing the .exe.
 #   url = "https://mydomain.com/packs/my-pack.zip"
-#url = ""
+url = "https://www.dropbox.com/scl/fi/39dlh6qt3tkj0b8ykvc84/Villazucar.zip?rlkey=xjaiqsysogj00dgnfp1klc6vf&st=fw286kvk&dl=1"
 
 # ── Option B: ZIP embedded in the executable ──────────────────────────────
 # Path RELATIVE TO THIS FOLDER (the project folder containing this file), or
@@ -47,7 +47,7 @@ update_url = ""
 #   path = "packs/my-pack.zip"      → in a subfolder
 #   path = "../exports/my-pack.zip" → in the parent folder
 #   path = "C:/Packs/my-pack.zip"   → absolute path
-path = "example-modpack.zip"
+#path = "example-modpack.zip"
 
 # If both are set, `url` takes precedence, and the embedded ZIP is used as a fallback if there is no
 # connection and no cached copy exists yet.
