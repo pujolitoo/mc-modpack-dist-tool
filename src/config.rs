@@ -3,7 +3,7 @@
 
 use crate::util;
 
-// Genera: TITLE, MODPACK_URL, UPDATE_URL, MSA_APP_ID, MIN_RAM_MB, FORMAT, CF_API_KEY, CF_API_BASE y EMBEDDED_PACK.
+// Genera: TITLE, MODPACK_URL, UPDATE_URL, MSA_APP_ID, MIN_RAM_MB, FORMAT, CF_API_KEY, CF_API_BASE, EMBEDDED_PACK y CLASSIC_ZLIB.
 include!(concat!(env!("OUT_DIR"), "/build_config.rs"));
 
 /// Azure application ID for the PortableMC project (the same one used by its CLI).
@@ -89,4 +89,10 @@ pub fn cf_api_base() -> &'static str {
 pub fn update_url() -> Option<&'static str> {
     let u = UPDATE_URL.trim();
     if u.is_empty() { None } else { Some(u) }
+}
+
+/// Classic zlib (`libz.so.1`) embedded in Linux builds; `compat` uses it to work around zlib-ng.
+#[allow(dead_code)]
+pub fn classic_zlib() -> Option<&'static [u8]> {
+    CLASSIC_ZLIB
 }

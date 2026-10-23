@@ -9,7 +9,7 @@
 
 [launcher]
 # Window title (optional).
-title = "Modpack Forge Launcher"
+title = "Villazucar Launcher"
 
 # Launcher self-update. URL where you publish the .exe (e.g. Dropbox).
 # When you REPLACE that file, players will receive the new version when they open the
@@ -32,7 +32,7 @@ update_url = ""
 # if the server reports a change (ETag). This lets you publish
 # pack updates without rebuilding or redistributing the .exe.
 #   url = "https://midominio.com/packs/mi-pack.zip"
-url = ""
+url = "https://www.dropbox.com/scl/fi/39dlh6qt3tkj0b8ykvc84/Villazucar.zip?rlkey=xjaiqsysogj00dgnfp1klc6vf&st=fw286kvk&dl=1"
 
 # ── Option B: ZIP embedded in the executable ──────────────────────────────
 # Path RELATIVE TO THIS FOLDER (the project folder containing this file), or
@@ -42,7 +42,7 @@ url = ""
 #   path = "packs/mi-pack.zip"      → en una subcarpeta
 #   path = "../exports/mi-pack.zip" → en la carpeta superior
 #   path = "C:/Packs/mi-pack.zip"   → ruta absoluta
-path = "example-modpack.zip"
+#path = "example-modpack.zip"
 
 # If both are set, `url` takes precedence, and the embedded ZIP is used as a fallback if there is no
 # connection and no cached copy exists yet.

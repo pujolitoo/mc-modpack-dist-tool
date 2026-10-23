@@ -1,6 +1,7 @@
 // On Windows (release builds), no console window is opened behind the app.
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
+mod compat;
 mod config;
 mod external;
 mod game;
@@ -26,6 +27,7 @@ const WARN: Color32 = Color32::from_rgb(0xe0, 0xa4, 0x3a);
 const MAX_LOG_LINES: usize = 2000;
 
 fn main() -> eframe::Result<()> {
+    compat::ensure_classic_zlib(); // Linux: must run before any thread exists (it may restart the process)
     selfupdate::cleanup_old(); // removes leftovers from a previous update
     let title = config::title();
     let options = eframe::NativeOptions {
@@ -317,6 +319,9 @@ impl App {
             open_log: None,
             ram_prompt: None,
         };
+        if std::env::var_os(compat::PRELOADED_MARKER).is_some() {
+            app.push_log("Linux: zlib-ng detected; running with a bundled classic zlib (needed to install Forge/NeoForge).".to_string());
+        }
         app.load_pack(&cc.egui_ctx);
         app
     }
