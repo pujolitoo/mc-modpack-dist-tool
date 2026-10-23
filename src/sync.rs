@@ -1,5 +1,6 @@
 //! Synchronizes the installation with the modpack: downloads/verifies mods, applies overrides and removes leftovers.
 
+use crate::i18n::t;
 use crate::msg::Reporter;
 use crate::pack::{effective_excluded, LoadedPack, ModEntry, ModState};
 use crate::util;
@@ -48,7 +49,7 @@ pub fn sync_pack(pack: &LoadedPack, install: &Path, excluded: &HashSet<String>, 
         .collect();
     let skipped = pack.manifest.mods.iter().filter(|m| m.state() == ModState::Active && removed_by_player(m)).count();
     if skipped > 0 {
-        rep.log(format!("Mods quitados por el jugador (se omiten o se eliminan): {skipped}"));
+        rep.log(tf!("sync.mods_removed_by_player_skipped", skipped = skipped));
     }
     let mut wanted: Vec<String> = Vec::with_capacity(active.len());
     for m in &active {
@@ -60,15 +61,15 @@ pub fn sync_pack(pack: &LoadedPack, install: &Path, excluded: &HashSet<String>, 
         if !wanted.contains(rel) {
             if let Ok(p) = util::safe_join(install, rel) {
                 if p.is_file() && fs::remove_file(&p).is_ok() {
-                    rep.log(format!("Eliminado: {rel}"));
+                    rep.log(tf!("sync.deleted", path = rel));
                 }
             }
         }
     }
 
-    // 2) Descargar / extraer / verificar en paralelo.
+    // 2) Download / extract / verify in parallel.
     let total = active.len();
-    rep.progress(0.0, format!("Comprobando {total} mods…"));
+    rep.progress(0.0, tf!("sync.checking_mods", total = total));
     let next = AtomicUsize::new(0);
     let done = AtomicUsize::new(0);
     let failures: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -108,19 +109,19 @@ pub fn sync_pack(pack: &LoadedPack, install: &Path, excluded: &HashSet<String>, 
     });
 
     for w in warnings.into_inner().unwrap() {
-        rep.log(format!("Aviso (mod opcional omitido) · {w}"));
+        rep.log(tf!("sync.warning_optional_mod_skipped", details = w));
     }
     let failures = failures.into_inner().unwrap();
     if !failures.is_empty() {
-        bail!("No se pudieron preparar estos mods obligatorios:\n- {}", failures.join("\n- "));
+        bail!(tf!("sync.these_required_mods_could_not", mods = failures.join("\n- ")));
     }
 
     // 3) Overrides: only if the pack changed or the file is missing (preserves your settings between sessions).
-    rep.busy("Applying configuration…");
+    rep.busy(t("sync.applying_configuration"));
     let fresh = old.pack_id != pack.id() || old.pack_version != pack.version();
     let mut applied = 0usize;
     if let Some(mut ar) = pack.archive()? {
-        // Multiple possible folders (p. ej. Modrinth: overrides/ y client-overrides/); later ones override earlier ones.
+        // Multiple possible folders (e.g. Modrinth: overrides/ and client-overrides/); later ones override earlier ones.
         for dir in pack.override_dirs() {
             let prefix = format!("{}{}", pack.root(), dir);
             for i in 0..ar.len() {
@@ -147,12 +148,12 @@ pub fn sync_pack(pack: &LoadedPack, install: &Path, excluded: &HashSet<String>, 
         }
     }
     if applied > 0 {
-        rep.log(format!("Overrides aplicados: {applied} archivos"));
+        rep.log(tf!("sync.overrides_applied_files", applied = applied));
     }
 
     let state = State { pack_id: pack.id(), pack_version: pack.version().to_string(), mods: wanted };
     fs::write(&state_path, serde_json::to_string_pretty(&state)?)?;
-    rep.progress(1.0, "Mods listos");
+    rep.progress(1.0, t("sync.mods_ready"));
     Ok(())
 }
 
@@ -177,7 +178,7 @@ fn ensure_mod<'a>(
 
     let result = (|| -> Result<&'static str> {
         let bundled = m.file.bundled_path.as_deref().filter(|p| !p.is_empty());
-        let mut how = "Extracted";
+        let mut how = t("sync.extracted");
         let from_zip = match (bundled, archive.as_mut()) {
             (Some(b), Some(ar)) => match ar.by_name(&format!("{}{}", pack.root(), b)) {
                 Ok(mut f) => {
@@ -194,16 +195,16 @@ fn ensure_mod<'a>(
             match url {
                 Some(u) => {
                     util::download_to(agent, u, &tmp)?;
-                    how = "Descargado";
+                    how = t("sync.downloaded");
                 }
                 None if m.resolved == Some(false) => {
-                    bail!("mod sin resolver: no se pudo obtener su archivo de descarga (revisa la API key de CurseForge o vuelve a exportar el pack)")
+                    bail!(t("sync.unresolved_mod_its_download_file"))
                 }
-                None => bail!("no tiene URL de descarga ni archivo incluido en el ZIP"),
+                None => bail!(t("sync.has_neither_download_url_nor")),
             }
         }
         if !util::verify_file(&tmp, &m.file)? {
-            return Err(anyhow!("file hash or size does not match (corrupt or modified)"));
+            return Err(anyhow!(t("sync.file_hash_or_size_does")));
         }
         if dest.exists() {
             fs::remove_file(&dest)?;

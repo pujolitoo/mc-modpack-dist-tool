@@ -1,9 +1,10 @@
-//! Configuration fijada AT BUILD TIME a partir de `launcher.toml` (ver build.rs).
+//! Configuration fixed AT BUILD TIME from `launcher.toml` (see build.rs).
 //! The resulting executable does not read any configuration files: it is self-contained.
 
 use crate::util;
 
-// Genera: TITLE, MODPACK_URL, UPDATE_URL, MSA_APP_ID, MIN_RAM_MB, FORMAT, CF_API_KEY, CF_API_BASE, EMBEDDED_PACK y CLASSIC_ZLIB.
+// Generates: TITLE, MODPACK_URL, UPDATE_URL, LANGUAGE, MSA_APP_ID, MIN_RAM_MB, FORMAT, CF_API_KEY, CF_API_BASE,
+// SERVER_ADDRESS, SERVER_AUTO_JOIN, EMBEDDED_PACK and CLASSIC_ZLIB.
 include!(concat!(env!("OUT_DIR"), "/build_config.rs"));
 
 /// Azure application ID for the PortableMC project (the same one used by its CLI).
@@ -40,16 +41,16 @@ pub fn min_ram_override_mb() -> Option<u64> {
     if MIN_RAM_MB > 0 { Some(MIN_RAM_MB) } else { None }
 }
 
-/// Formato del archivo del modpack.
+/// Modpack file format.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Format {
-    /// Detectar por el contenido del ZIP.
+    /// Detect from the ZIP contents.
     Auto,
-    /// ZIP/JSON exportado desde Modpack Forge (modpack.json).
+    /// ZIP/JSON exported from Modpack Forge (modpack.json).
     Forge,
-    /// ZIP exportado desde CurseForge (manifest.json).
+    /// ZIP exported from CurseForge (manifest.json).
     CurseForge,
-    /// .mrpack de Modrinth (modrinth.index.json).
+    /// Modrinth .mrpack (modrinth.index.json).
     Modrinth,
 }
 
@@ -73,13 +74,13 @@ pub fn format() -> Format {
     }
 }
 
-/// API key de CurseForge fijada al compilar (queda dentro del ejecutable).
+/// CurseForge API key fixed at build time (it ends up inside the executable).
 pub fn cf_api_key() -> Option<&'static str> {
     let k = CF_API_KEY.trim();
     if k.is_empty() { None } else { Some(k) }
 }
 
-/// URL base de la API de CurseForge (la oficial, o tu proxy).
+/// CurseForge API base URL (the official one, or your proxy).
 pub fn cf_api_base() -> &'static str {
     let b = CF_API_BASE.trim();
     if b.is_empty() { "https://api.curseforge.com" } else { b }
@@ -89,6 +90,22 @@ pub fn cf_api_base() -> &'static str {
 pub fn update_url() -> Option<&'static str> {
     let u = UPDATE_URL.trim();
     if u.is_empty() { None } else { Some(u) }
+}
+
+/// Default launcher language (`[launcher] language`); each player can change it in the launcher.
+/// (build.rs checks that `lang/<code>.json` exists.)
+pub fn default_language() -> &'static str {
+    LANGUAGE
+}
+
+/// Modpack server for auto-join and the status box (empty = none). Only set in launcher.toml.
+pub fn server_address() -> &'static str {
+    SERVER_ADDRESS.trim()
+}
+
+/// Whether auto-join starts enabled (until the player changes it).
+pub fn server_auto_join() -> bool {
+    SERVER_AUTO_JOIN
 }
 
 /// Classic zlib (`libz.so.1`) embedded in Linux builds; `compat` uses it to work around zlib-ng.

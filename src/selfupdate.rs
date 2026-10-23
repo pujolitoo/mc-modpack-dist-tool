@@ -2,19 +2,20 @@
 //! the launcher downloads it, replaces itself and restarts.
 //!
 //! How it detects changes without downloading the file every time:
-//!  - Compara la cabecera ETag (Dropbox la mantiene estable mientras el archivo no cambia), o Last-Modified,
+//!  - Compares the ETag header (Dropbox keeps it stable while the file does not change), or Last-Modified,
 //!    or size, against the values saved last time.
 //!  - On first run (with no reference), a file is only considered new if its size differs from the current .exe.
-//! Protecciones:
+//! Safeguards:
 //!  - Only installs the file if it appears to be an executable for this system (avoids installing Dropbox's HTML page).
 //!  - If the downloaded file is identical to the current one, it is not installed (avoids restart loops caused by unstable ETags).
-//!  - Si falla el reemplazo, restaura el ejecutable anterior.
+//!  - If the replacement fails, the previous executable is restored.
 //!
 //! macOS app bundles: if the update link points to a zipped `.app` (the URL ends in `.zip`) and the launcher runs from
 //! inside a `.app`, the whole bundle is replaced instead of just the executable. The new bundle is extracted next to
 //! the old one and a small helper script swaps them once this process has exited (a running app cannot replace itself),
 //! then reopens the app. If anything goes wrong the previous version is put back.
 
+use crate::i18n::t;
 use crate::config;
 use crate::msg::Reporter;
 use crate::util;
@@ -25,7 +26,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 pub enum Outcome {
-    /// No hay `update_url` configurada.
+    /// No `update_url` configured.
     Disabled,
     UpToDate,
     /// The executable has been replaced: restart using this path.
@@ -67,7 +68,7 @@ fn save_state(url: &str, etag: &Option<String>, last_modified: &Option<String>, 
     }
 }
 
-/// Convierte un enlace compartido de Dropbox en uno de descarga directa (dl=1). Otros servidores no se tocan.
+/// Turns a Dropbox shared link into a direct-download one (dl=1). Other hosts are left untouched.
 pub fn direct_url(link: &str) -> String {
     let link = link.trim();
     let is_dropbox = link
@@ -107,12 +108,12 @@ fn fetch_remote(url: &str) -> Result<Remote> {
         }),
         Err(ureq::Error::Status(_, _)) => {
             // The server responded but does not support HEAD: request only the first byte.
-            // (Si no hay red no se reintenta, para no retrasar el arranque.)
+            // (Without network it does not retry, so startup is not delayed.)
             let resp = agent
                 .get(url)
                 .set("Range", "bytes=0-0")
                 .call()
-                .map_err(|e| anyhow!("could not contact the update server ({e})"))?;
+                .map_err(|e| anyhow!(tf!("selfupdate.could_not_contact_update_server", error = e)))?;
             let size = if resp.status() == 206 {
                 header(&resp, "Content-Range").and_then(|v| v.rsplit('/').next().and_then(|n| n.trim().parse().ok()))
             } else {
@@ -120,7 +121,7 @@ fn fetch_remote(url: &str) -> Result<Remote> {
             };
             Ok(Remote { etag: header(&resp, "ETag"), last_modified: header(&resp, "Last-Modified"), size })
         }
-        Err(e) => Err(anyhow!("could not contact the update server ({e})")),
+        Err(e) => Err(anyhow!(tf!("selfupdate.could_not_contact_update_server", error = e))),
     }
 }
 
@@ -147,10 +148,10 @@ fn looks_like_executable(path: &Path) -> Result<bool> {
 pub fn run(rep: &Reporter) -> Result<Outcome> {
     let Some(link) = config::update_url() else { return Ok(Outcome::Disabled) };
     let url = direct_url(link);
-    let exe = std::env::current_exe().context("No se pudo localizar el ejecutable del launcher")?;
+    let exe = std::env::current_exe().context(t("selfupdate.could_not_locate_launcher_executable"))?;
     // A zipped .app as the update asset needs different handling, and can fail early with a helpful message.
     let bundle = is_bundle_update(&exe, &url)?;
-    rep.busy("Comprobando actualizaciones del launcher…");
+    rep.busy(t("selfupdate.checking_for_launcher_updates"));
 
     let remote = fetch_remote(&url)?;
     let state = load_state();
@@ -182,17 +183,17 @@ pub fn run(rep: &Reporter) -> Result<Outcome> {
         }
         return Ok(Outcome::UpToDate);
     }
-    rep.log("A new launcher version is available: downloading…");
+    rep.log(t("selfupdate.new_launcher_version_available_downloading"));
     apply(&exe, &url, rep, bundle)
 }
 
-/// Como `run`, pero un fallo (sin red, permisos…) solo se anota en el registro. Devuelve la ruta si hay que reiniciar.
+/// Like `run`, but a failure (no network, permissions…) is only written to the log. Returns the path if a restart is needed.
 pub fn run_or_log(rep: &Reporter) -> Option<PathBuf> {
     match run(rep) {
         Ok(Outcome::Updated(path)) => Some(path),
         Ok(_) => None,
         Err(e) => {
-            rep.log(format!("No se pudo actualizar el launcher: {e:#}"));
+            rep.log(tf!("selfupdate.could_not_update_launcher", error = format!("{:#}", e)));
             None
         }
     }
@@ -218,7 +219,7 @@ fn is_bundle_update(exe: &Path, url: &str) -> Result<bool> {
         return Ok(false);
     }
     let Some(app) = app_bundle_root(exe) else {
-        bail!("the update is a macOS app bundle (.zip) but the launcher is not running from a .app");
+        bail!(t("selfupdate.update_macos_app_bundle_zip"));
     };
     // "App Translocation": an app opened straight from Downloads runs from a randomized read-only copy.
     if app.to_string_lossy().contains("/AppTranslocation/") {
@@ -248,14 +249,14 @@ fn apply_app_bundle(
     use std::os::unix::fs::PermissionsExt;
 
     let app_path =
-        app_bundle_root(exe).ok_or_else(|| anyhow!("the launcher is not running from a .app bundle"))?;
-    let app_parent = app_path.parent().ok_or_else(|| anyhow!("the app bundle has no parent directory"))?;
+        app_bundle_root(exe).ok_or_else(|| anyhow!(t("selfupdate.launcher_not_running_from_app")))?;
+    let app_parent = app_path.parent().ok_or_else(|| anyhow!(t("selfupdate.app_bundle_has_no_parent")))?;
     let app_name = app_path
         .file_name()
-        .ok_or_else(|| anyhow!("invalid app bundle name"))?
+        .ok_or_else(|| anyhow!(t("selfupdate.invalid_app_bundle_name")))?
         .to_string_lossy()
         .to_string();
-    let executable_name = exe.file_name().ok_or_else(|| anyhow!("invalid executable name"))?.to_os_string();
+    let executable_name = exe.file_name().ok_or_else(|| anyhow!(t("selfupdate.invalid_executable_name")))?.to_os_string();
 
     let pid = std::process::id();
     let staging = app_parent.join(format!(".{app_name}.update-staging-{pid}"));
@@ -264,12 +265,12 @@ fn apply_app_bundle(
     let _ = fs::remove_dir_all(&backup);
     fs::create_dir_all(&staging).map_err(|e| {
         let _ = fs::remove_file(downloaded_zip);
-        anyhow!("cannot write next to the app in {} ({e}); does your user have write permissions there?", app_parent.display())
+        anyhow!(tf!("selfupdate.cannot_write_next_app_does", folder = app_parent.display(), error = e))
     })?;
 
     let extract_result = (|| -> Result<()> {
         let mut archive = zip::ZipArchive::new(fs::File::open(downloaded_zip)?)
-            .context("the download is not a valid ZIP archive")?;
+            .context(t("selfupdate.download_not_valid_zip_archive"))?;
 
         // Find the .app folder inside the ZIP. The `__MACOSX/` metadata folder that `ditto` adds is ignored
         // because it contains no Info.plist or executable.
@@ -287,7 +288,7 @@ fn apply_app_bundle(
                 names.contains(&root.join("Contents/Info.plist"))
                     && names.contains(&root.join("Contents/MacOS").join(&executable_name))
             })
-            .ok_or_else(|| anyhow!("the ZIP does not contain a valid launcher app bundle"))?;
+            .ok_or_else(|| anyhow!(t("selfupdate.zip_does_not_contain_valid")))?;
 
         for index in 0..archive.len() {
             let mut entry = archive.by_index(index)?;
@@ -320,7 +321,7 @@ fn apply_app_bundle(
 
         let staged = staging.join("Contents/MacOS").join(&executable_name);
         if !staged.is_file() || !staging.join("Contents/Info.plist").is_file() {
-            bail!("the extracted app bundle is incomplete");
+            bail!(t("selfupdate.extracted_app_bundle_incomplete"));
         }
         let mut permissions = fs::metadata(&staged)?.permissions();
         permissions.set_mode(permissions.mode() | 0o111);
@@ -331,7 +332,7 @@ fn apply_app_bundle(
     let _ = fs::remove_file(downloaded_zip);
     if let Err(error) = extract_result {
         let _ = fs::remove_dir_all(&staging);
-        return Err(error.context("could not prepare the downloaded app bundle"));
+        return Err(error.context(t("selfupdate.could_not_prepare_downloaded_app")));
     }
 
     // Same executable as the one already running: nothing to install (also avoids restart loops).
@@ -339,7 +340,7 @@ fn apply_app_bundle(
     if util::hash_file(&staged_exe, "sha256")? == util::hash_file(exe, "sha256")? {
         let _ = fs::remove_dir_all(&staging);
         save_state(url, etag, last_modified, Some(size));
-        rep.log("Launcher is already up to date.");
+        rep.log(t("selfupdate.launcher_already_up_date"));
         return Ok(Outcome::UpToDate);
     }
 
@@ -381,7 +382,7 @@ exec /usr/bin/open -n "$app" --args "$@"
     fs::set_permissions(&helper, fs::Permissions::from_mode(0o700))?;
 
     save_state(url, etag, last_modified, Some(size));
-    rep.log("App bundle update prepared; it will be installed after the launcher exits.");
+    rep.log(t("selfupdate.app_bundle_update_prepared_will"));
     Ok(Outcome::Updated(helper))
 }
 
@@ -415,11 +416,11 @@ fn cleanup_bundle_leftovers(exe: &Path) {
 }
 
 fn apply(exe: &PathBuf, url: &str, rep: &Reporter, bundle: bool) -> Result<Outcome> {
-    let dir = exe.parent().ok_or_else(|| anyhow!("invalid launcher path"))?;
+    let dir = exe.parent().ok_or_else(|| anyhow!(t("selfupdate.invalid_launcher_path")))?;
     let fname = exe
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
-        .ok_or_else(|| anyhow!("invalid launcher path"))?;
+        .ok_or_else(|| anyhow!(t("selfupdate.invalid_launcher_path")))?;
     // A bundle ZIP is downloaded outside the app (the app folder is not touched until the swap).
     let new_path = if bundle {
         util::app_data_dir().join("launcher-update.zip")
@@ -437,7 +438,7 @@ fn apply(exe: &PathBuf, url: &str, rep: &Reporter, bundle: bool) -> Result<Outco
     let resp = util::agent()
         .get(url)
         .call()
-        .map_err(|e| anyhow!("could not download update ({e})"))?;
+        .map_err(|e| anyhow!(tf!("selfupdate.could_not_download_update", error = e)))?;
     let etag = header(&resp, "ETag");
     let last_modified = header(&resp, "Last-Modified");
     let total = header(&resp, "Content-Length").and_then(|v| v.parse::<u64>().ok());
@@ -446,13 +447,13 @@ fn apply(exe: &PathBuf, url: &str, rep: &Reporter, bundle: bool) -> Result<Outco
     let res = util::copy_stream(resp.into_reader(), &new_path, total, move |done, total| match total {
         Some(t) if t > 0 => rep2.progress(
             done as f32 / t as f32,
-            format!("Descargando el launcher… {:.1}/{:.1} MB", util::mb(done as f64), util::mb(t as f64)),
+            tf!("selfupdate.downloading_launcher_mb", done_mb = format!("{:.1}", util::mb(done as f64)), total_mb = format!("{:.1}", util::mb(t as f64))),
         ),
-        _ => rep2.busy(format!("Descargando el launcher… {:.1} MB", util::mb(done as f64))),
+        _ => rep2.busy(tf!("selfupdate.downloading_launcher_mb_2", done_mb = format!("{:.1}", util::mb(done as f64)))),
     });
     if let Err(e) = res {
         cleanup();
-        return Err(e.context("launcher download failed"));
+        return Err(e.context(t("selfupdate.launcher_download_failed")));
     }
     let size = fs::metadata(&new_path)?.len();
 
@@ -476,7 +477,7 @@ fn apply(exe: &PathBuf, url: &str, rep: &Reporter, bundle: bool) -> Result<Outco
     if util::hash_file(&new_path, "sha256")? == util::hash_file(exe, "sha256")? {
         cleanup();
         save_state(url, &etag, &last_modified, Some(size));
-        rep.log("Launcher is already up to date.");
+        rep.log(t("selfupdate.launcher_already_up_date"));
         return Ok(Outcome::UpToDate);
     }
 
@@ -491,19 +492,19 @@ fn apply(exe: &PathBuf, url: &str, rep: &Reporter, bundle: bool) -> Result<Outco
     let _ = fs::remove_file(&old_path);
     fs::rename(exe, &old_path).map_err(|e| {
         cleanup();
-        anyhow!("could not replace launcher ({e}). Does the folder have write permissions?")
+        anyhow!(tf!("selfupdate.could_not_replace_launcher_does", error = e))
     })?;
     if let Err(e) = fs::rename(&new_path, exe) {
         let _ = fs::rename(&old_path, exe); // roll back
         cleanup();
-        bail!("could not install the new version ({e}); keeping the previous version");
+        bail!(tf!("selfupdate.could_not_install_new_version", error = e));
     }
     save_state(url, &etag, &last_modified, Some(size));
-    rep.log("Launcher actualizado.");
+    rep.log(t("selfupdate.launcher_updated"));
     Ok(Outcome::Updated(exe.clone()))
 }
 
-/// Borra restos de actualizaciones anteriores (el .exe viejo y descargas incompletas). Se llama al arrancar.
+/// Deletes leftovers from previous updates (the old .exe and incomplete downloads). Called on startup.
 pub fn cleanup_old() {
     let Ok(exe) = std::env::current_exe() else { return };
     #[cfg(target_os = "macos")]

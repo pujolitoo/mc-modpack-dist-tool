@@ -6,6 +6,7 @@
 //! - CurseForge: the ZIP only contains IDs (`projectID`/`fileID`). Resolving them into downloadable files requires
 //!   the CurseForge API, which needs an API key (`[curseforge] api_key` in `launcher.toml`, set at compile time).
 
+use crate::i18n::t;
 use crate::config;
 use crate::msg::Reporter;
 use crate::pack::{Dep, InstallInfo, LoaderInfo, Manifest, Minecraft, ModEntry, ModFile, ModVersion, PackInfo, Runtime, Side};
@@ -23,7 +24,7 @@ pub struct External {
     pub manifest: Manifest,
     /// Folder inside the ZIP containing the index (usually empty).
     pub root: String,
-    /// Carpetas de overrides, en el orden en que se aplican (later ones override earlier ones).
+    /// Override folders, in the order they are applied (later ones override earlier ones).
     pub override_dirs: Vec<String>,
 }
 
@@ -33,13 +34,13 @@ fn yes() -> bool {
 
 /// Reads a file from the ZIP root (or its only containing folder). Returns (prefix, text).
 fn read_entry(bytes: &[u8], file: &str) -> Result<(String, String)> {
-    let mut ar = ZipArchive::new(Cursor::new(bytes)).context("The file is not a valid ZIP")?;
+    let mut ar = ZipArchive::new(Cursor::new(bytes)).context(t("external.file_not_valid_zip"))?;
     let name = ar
         .file_names()
         .filter(|n| *n == file || n.ends_with(&format!("/{file}")))
         .min_by_key(|n| n.len())
         .map(|n| n.to_string())
-        .ok_or_else(|| anyhow!("El ZIP no contiene {file}"))?;
+        .ok_or_else(|| anyhow!(tf!("external.zip_does_not_contain", file = file)))?;
     let mut text = String::new();
     ar.by_name(&name)?.read_to_string(&mut text)?;
     Ok((name[..name.len() - file.len()].to_string(), text))
@@ -60,7 +61,7 @@ fn resolve_with_cache(
     let _ = fs::create_dir_all(&dir);
     let path = dir.join(format!("resolved-{tag}-{key}.json"));
 
-    rep.busy("Consultando los datos del modpack…");
+    rep.busy(t("external.fetching_modpack_data"));
     match resolve(&mut manifest) {
         Ok(()) => {
             if let Ok(json) = serde_json::to_vec(&manifest) {
@@ -71,13 +72,13 @@ fn resolve_with_cache(
         Err(e) => {
             let cached = fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Manifest>(&t).ok());
             if let Some(c) = cached {
-                rep.log(format!("{e:#}. Using data saved from the previous run."));
+                rep.log(tf!("external.using_data_saved_from_previous", error = format!("{:#}", e)));
                 return Ok(c);
             }
             if required {
                 Err(e)
             } else {
-                rep.log(format!("{e:#}. Using filenames."));
+                rep.log(tf!("external.using_filenames", error = format!("{:#}", e)));
                 Ok(manifest)
             }
         }
@@ -114,7 +115,7 @@ struct MrIndex {
     dependencies: HashMap<String, String>,
 }
 
-/// La especificación de .mrpack obliga a rechazar descargas fuera de estos servidores.
+/// The .mrpack specification requires rejecting downloads from outside these hosts.
 fn allowed_host(url: &str) -> bool {
     let Some(rest) = url.strip_prefix("https://") else { return false };
     let host = rest.split('/').next().unwrap_or("").split(':').next().unwrap_or("").to_lowercase();
@@ -123,7 +124,7 @@ fn allowed_host(url: &str) -> bool {
 
 pub fn modrinth(bytes: &[u8], rep: &Reporter) -> Result<External> {
     let (root, text) = read_entry(bytes, "modrinth.index.json")?;
-    let idx: MrIndex = serde_json::from_str(text.trim_start_matches('\u{feff}')).context("modrinth.index.json is invalid")?;
+    let idx: MrIndex = serde_json::from_str(text.trim_start_matches('\u{feff}')).context(t("external.modrinth_index_json_invalid"))?;
 
     let mc = idx.dependencies.get("minecraft").cloned().unwrap_or_default();
     let (kind, lver) = [("fabric-loader", "fabric"), ("quilt-loader", "quilt"), ("neoforge", "neoforge"), ("forge", "forge")]
@@ -192,7 +193,7 @@ fn enrich_modrinth(m: &mut Manifest) -> Result<()> {
         .post("https://api.modrinth.com/v2/version_files")
         .set("Content-Type", "application/json")
         .send_string(&body)
-        .map_err(|e| anyhow!("No se pudo consultar Modrinth ({e})"))?;
+        .map_err(|e| anyhow!(tf!("external.could_not_query_modrinth", error = e)))?;
     let versions: HashMap<String, Value> = serde_json::from_str(&resp.into_string()?)?;
 
     let mut ids: Vec<String> =
@@ -206,7 +207,7 @@ fn enrich_modrinth(m: &mut Manifest) -> Result<()> {
             .get("https://api.modrinth.com/v2/projects")
             .query("ids", &q)
             .call()
-            .map_err(|e| anyhow!("No se pudo consultar Modrinth ({e})"))?;
+            .map_err(|e| anyhow!(tf!("external.could_not_query_modrinth", error = e)))?;
         let list: Vec<Value> = serde_json::from_str(&resp.into_string()?)?;
         for p in list {
             if let (Some(id), Some(t)) = (p.get("id").and_then(|v| v.as_str()), p.get("title").and_then(|v| v.as_str())) {
@@ -301,16 +302,16 @@ fn pct(s: &str) -> String {
         .collect()
 }
 
-/// URL del CDN de CurseForge para mods cuya API no devuelve `downloadUrl`.
+/// CurseForge CDN URL for mods whose API does not return `downloadUrl`.
 fn edge_url(id: u64, name: &str) -> String {
     format!("https://edge.forgecdn.net/files/{}/{}/{}", id / 1000, id % 1000, pct(name))
 }
 
 pub fn curseforge(bytes: &[u8], rep: &Reporter) -> Result<External> {
     let (root, text) = read_entry(bytes, "manifest.json")?;
-    let cm: CfManifest = serde_json::from_str(text.trim_start_matches('\u{feff}')).context("manifest.json is invalid")?;
+    let cm: CfManifest = serde_json::from_str(text.trim_start_matches('\u{feff}')).context(t("external.manifest_json_invalid"))?;
     if !cm.manifest_type.is_empty() && cm.manifest_type != "minecraftModpack" {
-        bail!("Tipo de manifiesto no soportado: {}", cm.manifest_type);
+        bail!(tf!("external.unsupported_manifest_type", kind = cm.manifest_type));
     }
 
     // «forge-47.1.0» → (forge, 47.1.0)
@@ -365,8 +366,8 @@ fn resolve_curseforge(m: &mut Manifest, refs: &[(usize, u64, u64)]) -> Result<()
     let base = config::cf_api_base();
     if key.is_none() && base.trim_end_matches('/') == "https://api.curseforge.com" {
         bail!(
-            "Este modpack es de CurseForge y hace falta una API key. Rellena [curseforge] api_key en launcher.toml \
-             (o api_base con tu proxy) y vuelve a compilar"
+            "This is a CurseForge modpack and an API key is required. Fill in [curseforge] api_key in launcher.toml \
+             (or api_base with your proxy) and build again"
         );
     }
     let agent = util::agent();
@@ -378,7 +379,7 @@ fn resolve_curseforge(m: &mut Manifest, refs: &[(usize, u64, u64)]) -> Result<()
         if let Some(k) = key {
             req = req.set("x-api-key", k);
         }
-        let resp = req.send_string(&body.to_string()).map_err(|e| anyhow!("No se pudo consultar CurseForge ({e})"))?;
+        let resp = req.send_string(&body.to_string()).map_err(|e| anyhow!(tf!("external.could_not_query_curseforge", error = e)))?;
         Ok(serde_json::from_str(&resp.into_string()?)?)
     };
 
@@ -411,7 +412,7 @@ fn resolve_curseforge(m: &mut Manifest, refs: &[(usize, u64, u64)]) -> Result<()
         if let Some(n) = names.get(&pid) {
             x.name = n.clone();
         }
-        let Some(f) = files.get(&fid) else { continue }; // queda «sin resolver»
+        let Some(f) = files.get(&fid) else { continue }; // stays «unresolved»
         let fname = f.get("fileName").and_then(|v| v.as_str()).unwrap_or("").to_string();
         if fname.is_empty() {
             continue;

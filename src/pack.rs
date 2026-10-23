@@ -1,5 +1,6 @@
-//! Modelo del modpack exportado por Modpack Forge (`modpack-forge/1`) y carga desde ZIP/JSON/URL.
+//! Model of the modpack exported by Modpack Forge (`modpack-forge/1`) and loading from ZIP/JSON/URL.
 
+use crate::i18n::t;
 use crate::config::{self, Format};
 use crate::external;
 use crate::msg::Reporter;
@@ -61,8 +62,8 @@ pub struct ModFile {
     pub hashes: HashMap<String, serde_json::Value>,
     pub download_url: Option<String>,
     pub bundled_path: Option<String>,
-    /// Destination path relative to the installation (modpacks de Modrinth: mods/, resourcepacks/, config/…).
-    /// Si no hay, va a la carpeta de mods con su nombre de archivo.
+    /// Destination path relative to the installation (Modrinth modpacks: mods/, resourcepacks/, config/…).
+    /// If missing, it goes to the mods folder under its file name.
     pub path: Option<String>,
 }
 
@@ -79,7 +80,7 @@ pub struct Side {
     pub server: Option<String>,
 }
 
-/// Dependencia declarada por un mod (viene de Modrinth/CurseForge).
+/// Dependency declared by a mod (comes from Modrinth/CurseForge).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Dep {
@@ -115,7 +116,7 @@ pub struct ModEntry {
     pub dependencies: Vec<Dep>,
 }
 
-/// Stable project key: «origen:id». Remains stable across mod version updates.
+/// Stable project key: «source:id». Remains stable across mod version updates.
 fn project_key(source: &str, id: Option<&serde_json::Value>) -> Option<String> {
     match id {
         Some(serde_json::Value::String(v)) if !v.trim().is_empty() => Some(format!("{source}:{}", v.trim())),
@@ -142,8 +143,8 @@ impl ModEntry {
         }
     }
 
-    /// Mod que solo funciona en el cliente (el servidor no lo soporta): el jugador puede quitarlo.
-    /// Solo se puede saber con datos de Modrinth; en CurseForge y JAR locales el lado es «desconocido».
+    /// Mod that only works on the client (the server does not support it): the player can remove it.
+    /// Only known from Modrinth data; for CurseForge and local JARs the side is «unknown».
     pub fn is_client_only(&self) -> bool {
         self.side.server.as_deref() == Some("unsupported") && self.side.client.as_deref() != Some("unsupported")
     }
@@ -159,7 +160,7 @@ impl ModEntry {
         })
     }
 
-    /// Ruta relativa (con «/») donde se instala este archivo.
+    /// Relative path (with «/») where this file is installed.
     pub fn rel_path(&self, mods_dir: &str) -> Result<String> {
         if let Some(p) = self.file.path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
             return Ok(p.replace('\\', "/").trim_start_matches('/').to_string());
@@ -209,8 +210,8 @@ pub fn required_by(m: &Manifest, excluded: &HashSet<String>) -> HashMap<String, 
     out
 }
 
-/// Mods quitados que realmente se pueden quitar: solo los «solo cliente» y que no necesite otro mod incluido.
-/// (Aunque el archivo de ajustes diga otra cosa, un mod obligatorio o una dependencia nunca se quita.)
+/// Removed mods that can actually be removed: only «client only» ones that no other included mod needs.
+/// (Even if the settings file says otherwise, a required mod or a dependency is never removed.)
 pub fn effective_excluded(m: &Manifest, requested: &HashSet<String>) -> HashSet<String> {
     let mut eff: HashSet<String> = m
         .mods
@@ -247,27 +248,27 @@ pub struct LoadedPack {
 impl LoadedPack {
     pub fn from_bytes(bytes: Vec<u8>, origin: String) -> Result<Self> {
         let (manifest, root, is_zip) = if bytes.starts_with(b"PK") {
-            let mut ar = ZipArchive::new(Cursor::new(&bytes[..])).context("The file is not a valid ZIP")?;
+            let mut ar = ZipArchive::new(Cursor::new(&bytes[..])).context(t("pack.file_not_valid_zip"))?;
             let name = ar
                 .file_names()
                 .filter(|n| *n == "modpack.json" || n.ends_with("/modpack.json"))
                 .min_by_key(|n| n.len())
                 .map(|n| n.to_string())
-                .ok_or_else(|| anyhow!("The ZIP does not contain modpack.json. Was it exported from Modpack Forge?"))?;
+                .ok_or_else(|| anyhow!(t("pack.zip_does_not_contain_modpack")))?;
             let mut text = String::new();
             ar.by_name(&name)?.read_to_string(&mut text)?;
             let manifest: Manifest = serde_json::from_str(text.trim_start_matches('\u{feff}'))
-                .context("modpack.json is invalid")?;
+                .context(t("pack.modpack_json_invalid"))?;
             let root = name[..name.len() - "modpack.json".len()].to_string();
             (manifest, root, true)
         } else {
-            let text = String::from_utf8(bytes.clone()).context("El modpack no es un ZIP ni un JSON de texto")?;
+            let text = String::from_utf8(bytes.clone()).context(t("pack.modpack_neither_zip_nor_json"))?;
             let manifest: Manifest = serde_json::from_str(text.trim_start_matches('\u{feff}'))
-                .context("El archivo no es un JSON de Modpack Forge")?;
+                .context(t("pack.file_not_modpack_forge_json"))?;
             (manifest, String::new(), false)
         };
         if !manifest.schema.starts_with("modpack-forge/") {
-            bail!("El archivo no es un modpack de Modpack Forge (falta el campo «schema»)");
+            bail!(t("pack.file_not_modpack_forge_modpack"));
         }
         Ok(Self {
             manifest,
@@ -284,7 +285,7 @@ impl LoadedPack {
         Self { manifest, zip: Some(zip), root, origin, override_dirs, fingerprint: String::new(), offline: false }
     }
 
-    /// Carga un modpack detectando su formato (Modpack Forge, CurseForge o Modrinth) o el fijado en launcher.toml.
+    /// Loads a modpack detecting its format (Modpack Forge, CurseForge or Modrinth) or the one set in launcher.toml.
     pub fn load_bytes(bytes: Vec<u8>, origin: String, rep: &Reporter) -> Result<Self> {
         let fp = fingerprint(&bytes);
         let mut p = Self::load_bytes_inner(bytes, origin, rep)?;
@@ -296,7 +297,7 @@ impl LoadedPack {
         let want = config::format();
         if !bytes.starts_with(b"PK") {
             if matches!(want, Format::CurseForge | Format::Modrinth) {
-                bail!("launcher.toml indica format = «{}», pero el modpack no es un ZIP.", want.name());
+                bail!(tf!("pack.launcher_toml_sets_format_but", format = want.name()));
             }
             return Self::from_bytes(bytes, origin);
         }
@@ -324,7 +325,7 @@ impl LoadedPack {
         &self.root
     }
 
-    /// Abre el ZIP (si lo hay). Cada hilo abre el suyo: es barato porque lee de memoria.
+    /// Opens the ZIP (if any). Each thread opens its own: it is cheap because it reads from memory.
     pub fn archive(&self) -> Result<Option<ZipArchive<Cursor<&[u8]>>>> {
         match &self.zip {
             Some(z) => Ok(Some(ZipArchive::new(Cursor::new(z.as_slice()))?)),
@@ -366,7 +367,7 @@ impl LoadedPack {
             s.push_str(&m.loader.version);
         }
         if !m.pack.author.is_empty() {
-            s.push_str(&format!(" · por {}", m.pack.author));
+            s.push_str(&format!(" · by {}", m.pack.author));
         }
         s
     }
@@ -376,7 +377,7 @@ fn fingerprint(bytes: &[u8]) -> String {
     Sha1::digest(bytes).iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-/// Compara dos versiones de un modpack: (mods nuevos, eliminados, actualizados).
+/// Compares two versions of a modpack: (new, removed, updated mods).
 pub fn diff_mods(old: &Manifest, new: &Manifest) -> (usize, usize, usize) {
     let sig = |m: &ModEntry| {
         let hash = ["sha512", "sha256", "sha1", "md5"]
@@ -399,9 +400,9 @@ pub fn diff_mods(old: &Manifest, new: &Manifest) -> (usize, usize, usize) {
     (added, removed, updated)
 }
 
-/// Reconoce el formato de un ZIP por los archivos que contiene.
+/// Recognises the format of a ZIP from the files it contains.
 fn detect(bytes: &[u8]) -> Result<Format> {
-    let ar = ZipArchive::new(Cursor::new(bytes)).context("The file is not a valid ZIP")?;
+    let ar = ZipArchive::new(Cursor::new(bytes)).context(t("pack.file_not_valid_zip"))?;
     let has = |f: &str| ar.file_names().any(|n| n == f || n.ends_with(&format!("/{f}")));
     if has("modpack.json") {
         Ok(Format::Forge)
@@ -410,7 +411,7 @@ fn detect(bytes: &[u8]) -> Result<Format> {
     } else if has("manifest.json") {
         Ok(Format::CurseForge)
     } else {
-        bail!("No se reconoce el formato del ZIP: no contiene modpack.json (Modpack Forge), manifest.json (CurseForge) ni modrinth.index.json (Modrinth).")
+        bail!(t("pack.unrecognised_zip_format_contains_neither"))
     }
 }
 
@@ -421,7 +422,7 @@ pub fn load(rep: &Reporter) -> Result<LoadedPack> {
     let embedded = config::embedded_pack();
 
     if let Some(url) = config::modpack_url() {
-        rep.busy("Checking modpack…");
+        rep.busy(t("pack.checking_modpack"));
         let mut offline = false;
         let from_url = fetch_cached(url, rep).and_then(|(bytes, off)| {
             offline = off;
@@ -434,8 +435,8 @@ pub fn load(rep: &Reporter) -> Result<LoadedPack> {
             }
             Err(e) => match embedded {
                 Some(bytes) => {
-                    rep.log(format!("No se pudo obtener el modpack de la URL ({e:#}). Se usa la copia incluida en el ejecutable."));
-                    let mut p = LoadedPack::load_bytes(bytes.to_vec(), "incluido en el ejecutable".to_string(), rep)?;
+                    rep.log(tf!("pack.could_not_get_modpack_from", error = format!("{:#}", e)));
+                    let mut p = LoadedPack::load_bytes(bytes.to_vec(), t("pack.embedded_executable").to_string(), rep)?;
                     p.offline = true;
                     return Ok(p);
                 }
@@ -445,8 +446,8 @@ pub fn load(rep: &Reporter) -> Result<LoadedPack> {
     }
 
     match embedded {
-        Some(bytes) => LoadedPack::load_bytes(bytes.to_vec(), "incluido en el ejecutable".to_string(), rep),
-        None => bail!("This executable was built without a modpack (launcher.toml has neither url nor path)."),
+        Some(bytes) => LoadedPack::load_bytes(bytes.to_vec(), t("pack.embedded_executable").to_string(), rep),
+        None => bail!(t("pack.this_executable_was_built_without")),
     }
 }
 
@@ -472,7 +473,7 @@ fn fetch_cached(url: &str, rep: &Reporter) -> Result<(Vec<u8>, bool)> {
     let mut offline = false;
     match req.call() {
         // ureq only treats 4xx/5xx as errors: a 304 is handled here as a successful response.
-        Ok(resp) if resp.status() == 304 && file.is_file() => rep.log("Modpack is up to date (local cache)."),
+        Ok(resp) if resp.status() == 304 && file.is_file() => rep.log(t("pack.modpack_up_date_local_cache")),
         Ok(resp) => {
             let etag = resp.header("ETag").map(|s| s.to_string());
             let total = resp.header("Content-Length").and_then(|v| v.parse::<u64>().ok());
@@ -480,8 +481,8 @@ fn fetch_cached(url: &str, rep: &Reporter) -> Result<(Vec<u8>, bool)> {
             let rep2 = rep.clone();
             util::copy_stream(resp.into_reader(), &tmp, total, move |done, total| {
                 let text = match total {
-                    Some(t) if t > 0 => format!("Descargando el modpack… {:.1}/{:.1} MB", util::mb(done as f64), util::mb(t as f64)),
-                    _ => format!("Descargando el modpack… {:.1} MB", util::mb(done as f64)),
+                    Some(t) if t > 0 => tf!("pack.downloading_modpack_mb", done_mb = format!("{:.1}", util::mb(done as f64)), total_mb = format!("{:.1}", util::mb(t as f64))),
+                    _ => tf!("pack.downloading_modpack_mb_2", done_mb = format!("{:.1}", util::mb(done as f64))),
                 };
                 match total {
                     Some(t) if t > 0 => rep2.progress(done as f32 / t as f32, text),
@@ -499,13 +500,13 @@ fn fetch_cached(url: &str, rep: &Reporter) -> Result<(Vec<u8>, bool)> {
                 }
             }
         }
-        Err(ureq::Error::Status(304, _)) => rep.log("Modpack is up to date (local cache)."),
+        Err(ureq::Error::Status(304, _)) => rep.log(t("pack.modpack_up_date_local_cache")),
         Err(e) => {
             if file.is_file() {
-                rep.log(format!("Offline while accessing the modpack URL ({e}). Using the last downloaded copy."));
+                rep.log(tf!("pack.offline_while_accessing_modpack_url", error = e));
                 offline = true;
             } else {
-                bail!("No se pudo descargar el modpack desde {url}: {e}");
+                bail!(tf!("pack.could_not_download_modpack_from", url = url, error = e));
             }
         }
     }

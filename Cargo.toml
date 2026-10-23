@@ -2,7 +2,7 @@
 name = "modpack-launcher"
 version = "1.0.0"
 edition = "2021"
-description = "Launcher de un clic para modpacks exportados desde Modpack Forge"
+description = "One-click launcher for modpacks exported from Modpack Forge"
 
 [dependencies]
 # Minecraft installation and launch engine (the same library used by the PortableMC CLI).
@@ -12,21 +12,23 @@ portablemc = "5.0.3"
 eframe = "0.31"
 egui_extras = "0.31"
 rfd = "0.15"            # native system dialogs (choose folder)
-webbrowser = "1"        # abrir el navegador para el login de Microsoft
+webbrowser = "1"        # opens the browser for Microsoft sign-in
 
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-ureq = "2.12"           # HTTP bloqueante ligero (descarga de mods y del modpack)
+ureq = "2.12"           # lightweight blocking HTTP (mod and modpack downloads)
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sha1 = "0.10"
 sha2 = "0.10"
 md-5 = "0.10"
 dirs = "6"
-sysinfo = { version = "0.33", default-features = false, features = ["system"] }   # RAM total del equipo
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }   # total system RAM
+png = "0.18"           # decodes the server icon (favicon) shown in the launcher
 
 [build-dependencies]
-toml = "0.8"   # build.rs lee launcher.toml al compilar
+toml = "0.8"         # build.rs reads launcher.toml at build time
+serde_json = "1"     # build.rs validates the lang/*.json files
 
 [profile.release]
 opt-level = 3

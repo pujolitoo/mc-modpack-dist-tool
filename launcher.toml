@@ -2,14 +2,19 @@
 #  Modpack Forge Launcher · configuration AT BUILD TIME
 #
 #  Edit this file BEFORE running `cargo build --release`.
-#  Values are embedded in the executable: players only need
-#  give them that single file (the .exe), with no separate ZIP or configuration.
+#  Values are embedded in the executable: you only need to give players
+#  that single file (the .exe), with no separate ZIP or configuration.
 #  If you change anything here, rebuild.
 # ═══════════════════════════════════════════════════════════════════════════
 
 [launcher]
 # Window title (optional).
 title = "Villazucar Launcher"
+
+# Default language of the launcher texts: the name of a file in the lang/ folder without ".json"
+# ("en" = English, "es" = Spanish, ...). Each player can switch it in the launcher; their choice is remembered.
+# To add a language, copy lang/en.json to lang/<code>.json, translate the texts and rebuild.
+language = "en"
 
 # Launcher self-update. URL where you publish the .exe (e.g. Dropbox).
 # When you REPLACE that file, players will receive the new version when they open the
@@ -31,28 +36,28 @@ update_url = ""
 # The launcher downloads the ZIP on startup and caches it; it only downloads it again
 # if the server reports a change (ETag). This lets you publish
 # pack updates without rebuilding or redistributing the .exe.
-#   url = "https://midominio.com/packs/mi-pack.zip"
-url = ""
+#   url = "https://mydomain.com/packs/my-pack.zip"
+#url = ""
 
 # ── Option B: ZIP embedded in the executable ──────────────────────────────
 # Path RELATIVE TO THIS FOLDER (the project folder containing this file), or
 # absolute. The ZIP is placed INSIDE the .exe during the build, so the .exe is the
 # only file you need to distribute. Examples:
-#   path = "modpack.zip"            → junto a launcher.toml
-#   path = "packs/mi-pack.zip"      → en una subcarpeta
-#   path = "../exports/mi-pack.zip" → en la carpeta superior
-#   path = "C:/Packs/mi-pack.zip"   → ruta absoluta
-#path = "example-modpack.zip"
+#   path = "modpack.zip"            → next to launcher.toml
+#   path = "packs/my-pack.zip"      → in a subfolder
+#   path = "../exports/my-pack.zip" → in the parent folder
+#   path = "C:/Packs/my-pack.zip"   → absolute path
+path = "example-modpack.zip"
 
 # If both are set, `url` takes precedence, and the embedded ZIP is used as a fallback if there is no
 # connection and no cached copy exists yet.
 
-# ── Formato del archivo ────────────────────────────────────────────────────
+# ── File format ────────────────────────────────────────────────────────────
 # Type of modpack in the ZIP above (`path`) or downloaded from (`url`):
-#   "auto"       → lo detecta por su contenido (recomendado)
-#   "forge"      → exportado desde Modpack Forge (contiene modpack.json)
-#   "curseforge" → exportado desde la app de CurseForge (contiene manifest.json)
-#   "modrinth"   → .mrpack de Modrinth (contiene modrinth.index.json)
+#   "auto"       → detected from its contents (recommended)
+#   "forge"      → exported from Modpack Forge (contains modpack.json)
+#   "curseforge" → exported from the CurseForge app (contains manifest.json)
+#   "modrinth"   → Modrinth .mrpack (contains modrinth.index.json)
 #
 # · Modrinth works without any additional configuration: the .mrpack already includes URLs and hashes.
 # · CurseForge only provides mod IDs: converting them into downloads requires
@@ -65,6 +70,18 @@ format = "auto"
 # 0 = use the modpack's own recommended RAM value (runtime.recommendedRamMb).
 min_ram_mb = 0
 
+[server]
+# Modpack server. It is embedded in the executable: players cannot change it.
+# The launcher shows its status (online/offline, players, latency) in a box at the top right,
+# and can join it automatically when PLAY is clicked.
+# Formats: "play.mydomain.com", "play.mydomain.com:25570", "123.45.67.89:25565".
+# Without a port, 25565 or the domain's SRV record is used.
+# Empty = no server (the box is hidden and there is no auto-join).
+address = "194.87.217.8:8927"
+
+# Whether "join automatically" starts enabled. Each player can still tick/untick it in the launcher.
+auto_join = true
+
 [microsoft]
 # Azure Application (client) ID for Microsoft sign-in.
 # Empty = use the PortableMC project ID. If you plan to distribute the launcher
@@ -74,7 +91,7 @@ app_id = ""
 
 [curseforge]
 # Only required if the modpack is a ZIP exported from CurseForge.
-# API key gratuita: https://console.curseforge.com
+# Free API key: https://console.curseforge.com
 #
 # ⚠ The key is stored INSIDE the executable, and a technically skilled player could
 #   extract it. If this is a concern, leave api_key empty and use your own proxy

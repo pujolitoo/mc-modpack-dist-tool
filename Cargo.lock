@@ -2406,6 +2406,7 @@ dependencies = [
  "eframe",
  "egui_extras",
  "md-5",
+ "png",
  "portablemc",
  "rfd",
  "serde",
