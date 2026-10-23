@@ -32,7 +32,7 @@ update_url = ""
 # if the server reports a change (ETag). This lets you publish
 # pack updates without rebuilding or redistributing the .exe.
 #   url = "https://midominio.com/packs/mi-pack.zip"
-url = "https://www.dropbox.com/scl/fi/39dlh6qt3tkj0b8ykvc84/Villazucar.zip?rlkey=xjaiqsysogj00dgnfp1klc6vf&st=fw286kvk&dl=1"
+url = ""
 
 # ── Option B: ZIP embedded in the executable ──────────────────────────────
 # Path RELATIVE TO THIS FOLDER (the project folder containing this file), or
