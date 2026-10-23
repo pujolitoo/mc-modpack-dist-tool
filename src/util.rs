@@ -1,5 +1,6 @@
-//! Utilidades: rutas seguras, hashes y descargas.
+//! Utilities: safe paths, hashes and downloads.
 
+use crate::i18n::t;
 use crate::pack::ModFile;
 use anyhow::{anyhow, bail, Result};
 use md5::Md5;
@@ -50,26 +51,26 @@ pub fn slugify(s: &str) -> String {
     }
 }
 
-/// Une una ruta relativa a `root` rechazando `..`, rutas absolutas y unidades (anti zip-slip).
+/// Joins a relative path to `root`, rejecting `..`, absolute paths and drive letters (anti zip-slip).
 pub fn safe_join(root: &Path, rel: &str) -> Result<PathBuf> {
     let rel = rel.replace('\\', "/");
     let mut out = root.to_path_buf();
     for comp in rel.split('/') {
         match comp {
             "" | "." => {}
-            ".." => bail!("Ruta insegura en el modpack: {rel}"),
-            c if c.contains(':') => bail!("Ruta insegura en el modpack: {rel}"),
+            ".." => bail!(tf!("util.unsafe_path_modpack", path = rel)),
+            c if c.contains(':') => bail!(tf!("util.unsafe_path_modpack", path = rel)),
             c => out.push(c),
         }
     }
     Ok(out)
 }
 
-/// Solo el nombre de archivo (sin directorios) de un nombre que viene del modpack.
+/// Just the file name (no directories) of a name that comes from the modpack.
 pub fn safe_file_name(name: &str) -> Result<String> {
     let n = name.rsplit(|c| c == '/' || c == '\\').next().unwrap_or("").trim();
     if n.is_empty() || n == "." || n == ".." || n.contains(':') {
-        bail!("Invalid filename: «{name}»");
+        bail!(tf!("util.invalid_filename", name = name));
     }
     Ok(n.to_string())
 }
@@ -91,7 +92,7 @@ pub fn agent_quick() -> ureq::Agent {
         .build()
 }
 
-/// Copia un flujo a disco informando del progreso (bytes hechos, total si se conoce).
+/// Copies a stream to disk reporting progress (bytes done, total if known).
 pub fn copy_stream(
     mut reader: impl Read,
     dest: &Path,
@@ -114,10 +115,10 @@ pub fn copy_stream(
     Ok(())
 }
 
-/// Descarga con 3 intentos. No reintenta ante errores 4xx (salvo 429).
+/// Downloads with 3 attempts. Does not retry on 4xx errors (except 429).
 pub fn download_to(agent: &ureq::Agent, url: &str, dest: &Path) -> Result<()> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
-        bail!("URL no soportada: {url}");
+        bail!(tf!("util.unsupported_url", url = url));
     }
     let mut last: Option<anyhow::Error> = None;
     for attempt in 0..3u64 {
@@ -130,13 +131,13 @@ pub fn download_to(agent: &ureq::Agent, url: &str, dest: &Path) -> Result<()> {
                 }
             }
             Err(ureq::Error::Status(code, _)) if (400..500).contains(&code) && code != 429 => {
-                bail!("server responded with HTTP {code}")
+                bail!(tf!("util.server_responded_with_http", code = code))
             }
             Err(e) => last = Some(anyhow!(e.to_string())),
         }
         std::thread::sleep(Duration::from_millis(800 * (attempt + 1)));
     }
-    Err(last.unwrap_or_else(|| anyhow!("descarga fallida")))
+    Err(last.unwrap_or_else(|| anyhow!(t("util.download_failed"))))
 }
 
 /// The strongest available hash: (algorithm, lowercase value).
@@ -172,7 +173,7 @@ pub fn hash_file(path: &Path, algo: &str) -> Result<String> {
         "sha256" => run!(Sha256::new()),
         "sha1" => run!(Sha1::new()),
         "md5" => run!(Md5::new()),
-        other => bail!("algoritmo de hash no soportado: {other}"),
+        other => bail!(tf!("util.unsupported_hash_algorithm", algorithm = other)),
     })
 }
 

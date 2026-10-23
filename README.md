@@ -12,7 +12,10 @@ Edit `launcher.toml`. All settings are embedded into the executable at build tim
     a ZIP exported from CurseForge, or a Modrinth `.mrpack`.
   - `[curseforge] api_key` → only required for CurseForge ZIPs (resolves IDs to downloads).
   - `[requirements] min_ram_mb` → minimum system RAM; 0 = the amount recommended by the modpack.
+  - `[launcher] language` → default language of the launcher texts: a file of `lang/` without `.json` (`en`, `es`...).
   - `[microsoft] app_id` → your own Azure app ID (optional).
+  - `[server] address` / `auto_join` → the modpack server (fixed in the executable) and whether
+    "join automatically on PLAY" starts enabled (players can tick/untick it).
 
 ## 2. Build
     cargo build --release        # → target/release/modpack-launcher(.exe)
@@ -29,6 +32,25 @@ With `[modpack] url`, the **Check for updates** button queries the server and, i
 and displays a summary (new, removed and updated mods). Changes are applied when **PLAY** is clicked.
 With `[modpack] path`, the modpack is embedded in the .exe: distribute a new launcher to update it.
 Increment the pack version when publishing changes: overrides (configs) are only reapplied when the version changes.
+
+## Server status and auto-join
+With `[server] address` set, the **Server** box (top right) shows the server icon (its `server-icon.png`), whether the server is online, how many players are connected (hover to see their
+names, when the server shares them), latency, version and MOTD; it refreshes every 30 seconds. With
+**Join automatically when clicking PLAY** enabled, PLAY starts Minecraft and joins that server directly (Quick Play on
+1.20+, `--server/--port` on older versions). Addresses without a port use 25565 or the domain's SRV record.
+
+## Languages
+All launcher texts live in `lang/<code>.json` (`lang/en.json`, `lang/es.json`...), embedded in the executable at build
+time. `[launcher] language` sets the default; each player can switch it with the **Language** selector under the title,
+and the choice is remembered.
+
+**Adding a language:** copy `lang/en.json` to e.g. `lang/fr.json`, set `"language_name": "Français"`, translate the
+texts and rebuild. It appears in the selector automatically. Keep the `{placeholders}` exactly as they are (you can
+move them inside the sentence). Untranslated texts fall back to English.
+
+The build checks the texts against the code: a key used in the code that is missing from `en.json`, or a `{placeholder}`
+the code does not fill, stops the build with the file and line; problems in translations are shown as warnings.
+In the code, texts are used as `t("main.play")` or `tf!("main.signed_as", name = name)` (see `src/i18n.rs`).
 
 ## Launcher auto-update
 With `[launcher] update_url` (a Dropbox link to the .exe), the launcher checks on startup whether the

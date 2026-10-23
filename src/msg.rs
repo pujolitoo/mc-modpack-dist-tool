@@ -6,10 +6,10 @@ use std::sync::{mpsc::Sender, Arc};
 
 pub enum Msg {
     PackLoaded(Result<Arc<LoadedPack>, String>),
-    /// Result of clicking «Buscar actualizaciones».
+    /// Result of clicking «Check for updates».
     UpdateChecked(Result<Arc<LoadedPack>, String>),
     Status { text: String, error: bool },
-    /// Progreso determinado (0.0 ..= 1.0) con un texto.
+    /// Determinate progress (0.0 ..= 1.0) with a text.
     Progress { fraction: f32, text: String },
     /// Operation without measurable progress.
     Busy(String),
@@ -18,6 +18,8 @@ pub enum Msg {
     LoginDone(Result<String, String>),
     PlayDone(Result<Option<i32>, String>),
     Refresh,
+    /// Result of a server status query (`id` discards replies that are no longer current).
+    ServerStatus { id: u64, result: Result<crate::server::Status, String> },
     /// The launcher replaced itself; it must restart using this executable.
     SelfUpdated(std::path::PathBuf),
 }

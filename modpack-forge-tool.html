@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -79,110 +79,110 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 <body>
 <header>
   <h1>⛏️ Modpack Forge</h1>
-  <span class="note" style="margin:0">Crea modpacks y expórtalos como JSON para tu lanzador</span>
+  <span class="note" style="margin:0">Build modpacks and export them as JSON for your launcher</span>
   <span class="sp"></span>
-  <button id="btnTheme" class="sm">Tema</button>
-  <button id="btnReset" class="sm dng">Vaciar todo</button>
+  <button id="btnTheme" class="sm">Theme</button>
+  <button id="btnReset" class="sm dng">Clear everything</button>
 </header>
 
 <main>
-  <!-- BIBLIOTECA + AJUSTES DEL PACK -->
+  <!-- LIBRARY + PACK SETTINGS -->
   <div class="col">
   <section class="p" id="lib">
-    <h2>Mis modpacks</h2>
-    <label for="packSel">Modpack activo</label>
+    <h2>My modpacks</h2>
+    <label for="packSel">Active modpack</label>
     <select id="packSel"></select>
-    <div class="row" style="margin-top:8px"><button class="sm pri" id="packNew">Nuevo</button><button class="sm" id="packDup">Duplicar</button><button class="sm dng" id="packDel">Eliminar</button></div>
+    <div class="row" style="margin-top:8px"><button class="sm pri" id="packNew">New</button><button class="sm" id="packDup">Duplicate</button><button class="sm dng" id="packDel">Delete</button></div>
     <p class="note" id="packNote"></p>
   </section>
   <section class="p">
     <h2>Modpack</h2>
-    <label for="pId">ID del modpack</label>
-    <div class="row"><input id="pId" readonly spellcheck="false" style="font:12px ui-monospace,Consolas,monospace"><button class="sm" id="idCopy">Copiar</button><button class="sm" id="idNew">Nuevo</button></div>
-    <label for="pName">Nombre</label><input id="pName" placeholder="Mi modpack">
-    <label for="pVer">Versión del pack</label><input id="pVer" placeholder="1.0.0">
-    <label for="pAuthor">Autor</label><input id="pAuthor">
-    <label for="pDesc">Descripción</label><textarea id="pDesc"></textarea>
-    <label for="mc">Versión de Minecraft</label>
+    <label for="pId">Modpack ID</label>
+    <div class="row"><input id="pId" readonly spellcheck="false" style="font:12px ui-monospace,Consolas,monospace"><button class="sm" id="idCopy">Copy</button><button class="sm" id="idNew">New</button></div>
+    <label for="pName">Name</label><input id="pName" placeholder="My modpack">
+    <label for="pVer">Pack version</label><input id="pVer" placeholder="1.0.0">
+    <label for="pAuthor">Author</label><input id="pAuthor">
+    <label for="pDesc">Description</label><textarea id="pDesc"></textarea>
+    <label for="mc">Minecraft version</label>
     <input id="mc" list="mcList" placeholder="1.20.1"><datalist id="mcList"></datalist>
     <label for="loader">Mod loader</label>
     <select id="loader"><option value="fabric">Fabric</option><option value="forge">Forge</option><option value="neoforge">NeoForge</option><option value="quilt">Quilt</option></select>
-    <label for="lver">Versión del loader</label>
+    <label for="lver">Loader version</label>
     <input id="lver" list="lvList" placeholder="0.15.11"><datalist id="lvList"></datalist>
-    <label for="java">Java mínimo</label>
+    <label for="java">Minimum Java</label>
     <input id="java" type="number" min="8" placeholder="17">
-    <label for="ram">RAM recomendada (MB)</label>
+    <label for="ram">Recommended RAM (MB)</label>
     <input id="ram" type="number" min="1024" step="512" placeholder="4096">
 
     <details style="margin-top:14px">
-      <summary>API de CurseForge</summary>
+      <summary>CurseForge API</summary>
       <label for="cfKey">API key</label><input id="cfKey" type="password" placeholder="$2a$10$...">
-      <label for="cfBase">URL base / proxy</label><input id="cfBase" placeholder="https://api.curseforge.com">
-      <p class="note w">CurseForge bloquea las peticiones directas desde el navegador (CORS). Para buscar y resolver mods necesitas un proxy que añada los cabeceras CORS. Se guarda solo en este navegador.</p>
+      <label for="cfBase">Base URL / proxy</label><input id="cfBase" placeholder="https://api.curseforge.com">
+      <p class="note w">CurseForge blocks direct requests from the browser (CORS). To search and resolve mods you need a proxy that adds the CORS headers. It is only saved in this browser.</p>
     </details>
   </section>
   </div>
 
-  <!-- AÑADIR MODS -->
+  <!-- ADD MODS -->
   <section class="p">
-    <h2>Añadir mods</h2>
+    <h2>Add mods</h2>
     <div class="tabs" role="tablist">
       <button role="tab" data-t="mr" aria-selected="true">Modrinth</button>
       <button role="tab" data-t="cf" aria-selected="false">CurseForge</button>
-      <button role="tab" data-t="jar" aria-selected="false">Archivos JAR</button>
-      <button role="tab" data-t="imp" aria-selected="false">Importar</button>
+      <button role="tab" data-t="jar" aria-selected="false">JAR files</button>
+      <button role="tab" data-t="imp" aria-selected="false">Import</button>
     </div>
 
     <div class="pane" id="t-mr">
-      <div class="row"><input id="mrQ" placeholder="Buscar en Modrinth (sodium, jei, create...)"><button class="pri" id="mrGo">Buscar</button></div>
-      <label class="chk"><input type="checkbox" id="autoDeps" checked> Añadir dependencias obligatorias automáticamente</label>
-      <p class="note">Se filtra por la versión de Minecraft y el loader del modpack.</p>
+      <div class="row"><input id="mrQ" placeholder="Search Modrinth (sodium, jei, create...)"><button class="pri" id="mrGo">Search</button></div>
+      <label class="chk"><input type="checkbox" id="autoDeps" checked> Add required dependencies automatically</label>
+      <p class="note">Filtered by the modpack's Minecraft version and loader.</p>
       <div id="mrRes"></div>
     </div>
 
     <div class="pane" id="t-cf" hidden>
-      <div class="row"><input id="cfQ" placeholder="Buscar en CurseForge"><button class="pri" id="cfGo">Buscar</button></div>
-      <p class="note">Requiere API key (panel izquierdo) y un proxy con CORS.</p>
+      <div class="row"><input id="cfQ" placeholder="Search CurseForge"><button class="pri" id="cfGo">Search</button></div>
+      <p class="note">Requires an API key (left panel) and a proxy with CORS.</p>
       <div id="cfRes"></div>
     </div>
 
     <div class="pane" id="t-jar" hidden>
-      <div class="drop" id="drop">Arrastra aquí archivos .jar o <button class="sm" id="pickJar">elige archivos</button></div>
+      <div class="drop" id="drop">Drag .jar files here or <button class="sm" id="pickJar">choose files</button></div>
       <input type="file" id="jarIn" accept=".jar" multiple hidden>
-      <p class="note">Se calculan SHA-1 y SHA-256 y se lee el id, nombre y versión del mod desde el propio JAR. Al exportar puedes incluirlos en un ZIP junto al JSON, o asignarles una URL de descarga propia.</p>
+      <p class="note">SHA-1 and SHA-256 are computed and the mod's id, name and version are read from the JAR itself. When exporting you can include them in a ZIP next to the JSON, or give them your own download URL.</p>
     </div>
 
     <div class="pane" id="t-imp" hidden>
-      <h3 style="font-size:15px">Modpack de CurseForge (.zip)</h3>
-      <div class="drop" id="dropCf">Arrastra el ZIP exportado desde la app de CurseForge o <button class="sm" id="pickCf">elígelo</button></div>
+      <h3 style="font-size:15px">CurseForge modpack (.zip)</h3>
+      <div class="drop" id="dropCf">Drag the ZIP exported from the CurseForge app or <button class="sm" id="pickCf">choose it</button></div>
       <input type="file" id="cfIn" accept=".zip" hidden>
-      <p class="note">Lee <code>manifest.json</code>: versión de Minecraft, loader y lista de mods (projectID / fileID). Si hay API key, se resuelven nombres, URLs y hashes. Los JAR dentro de <code>overrides/mods</code> se añaden como locales.</p>
-      <h3 style="font-size:15px;margin-top:18px">Solo overrides</h3>
-      <div class="row"><button id="pickOv">Importar solo overrides (.zip)</button></div>
+      <p class="note">Reads <code>manifest.json</code>: Minecraft version, loader and mod list (projectID / fileID). With an API key, names, URLs and hashes are resolved. JARs inside <code>overrides/mods</code> are added as local mods.</p>
+      <h3 style="font-size:15px;margin-top:18px">Overrides only</h3>
+      <div class="row"><button id="pickOv">Import overrides only (.zip)</button></div>
       <input type="file" id="ovIn" accept=".zip" hidden>
-      <p class="note">Acepta un ZIP de CurseForge (usa su carpeta <code>overrides</code>) o un ZIP normal con carpetas como <code>config</code>, <code>kubejs</code> o <code>resourcepacks</code>. No toca los mods.</p>
-      <h3 style="font-size:15px;margin-top:18px">JSON de Modpack Forge</h3>
-      <div class="row"><button id="pickJson">Importar .json</button></div>
+      <p class="note">Accepts a CurseForge ZIP (uses its <code>overrides</code> folder) or a regular ZIP with folders such as <code>config</code>, <code>kubejs</code> or <code>resourcepacks</code>. Mods are not touched.</p>
+      <h3 style="font-size:15px;margin-top:18px">Modpack Forge JSON</h3>
+      <div class="row"><button id="pickJson">Import .json</button></div>
       <input type="file" id="jsonIn" accept=".json,application/json" hidden>
     </div>
   </section>
 
-  <!-- CAMBIOS + LISTA -->
+  <!-- CHANGES + LIST -->
   <div class="col">
   <section class="p" id="chg">
-    <h2>Cambios pendientes <span class="tag" id="chgCount">0</span></h2>
-    <div class="row" style="margin-bottom:8px"><button class="pri" id="chgApply" disabled>Aplicar cambios</button><button class="dng" id="chgDiscard" disabled>Descartar todo</button></div>
+    <h2>Pending changes <span class="tag" id="chgCount">0</span></h2>
+    <div class="row" style="margin-bottom:8px"><button class="pri" id="chgApply" disabled>Apply changes</button><button class="dng" id="chgDiscard" disabled>Discard all</button></div>
     <div id="chgList" aria-live="polite"></div>
   </section>
   <section class="p">
-    <h2>Contenido del pack</h2>
+    <h2>Pack contents</h2>
     <div class="stat" id="stat"></div>
     <div class="row" style="margin-bottom:8px">
-      <button class="pri" id="expJson">Exportar JSON</button>
-      <button id="expZip">Exportar ZIP (JSON + JARs)</button>
+      <button class="pri" id="expJson">Export JSON</button>
+      <button id="expZip">Export ZIP (JSON + JARs)</button>
     </div>
     <p class="note" id="expNote" style="margin-top:0"></p>
-    <input id="filter" placeholder="Filtrar mods…" style="margin-bottom:6px">
+    <input id="filter" placeholder="Filter mods…" style="margin-bottom:6px">
     <div id="mods"></div>
   </section>
   </div>
@@ -191,30 +191,30 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
   <h2 id="impTitle" style="font-size:17px"></h2>
   <p class="note" id="impInfo"></p>
   <p class="note w" id="impWarn" hidden></p>
-  <fieldset id="impTargetG"><legend>Destino</legend>
-    <label class="chk"><input type="radio" name="impT" value="cur" checked> En el modpack actual</label>
-    <label class="chk"><input type="radio" name="impT" value="new"> En un modpack nuevo (no toca el actual)</label>
+  <fieldset id="impTargetG"><legend>Target</legend>
+    <label class="chk"><input type="radio" name="impT" value="cur" checked> Into the current modpack</label>
+    <label class="chk"><input type="radio" name="impT" value="new"> Into a new modpack (the current one is not touched)</label>
   </fieldset>
   <fieldset id="impModsG"><legend>Mods</legend>
     <p class="note" id="impModsTxt" style="margin-top:0"></p>
-    <label class="chk"><input type="radio" name="impM" value="add" checked> Añadir a los actuales (se omiten los duplicados)</label>
-    <label class="chk"><input type="radio" name="impM" value="replace"> Reemplazar todos los mods actuales</label>
+    <label class="chk"><input type="radio" name="impM" value="add" checked> Add to the current ones (duplicates are skipped)</label>
+    <label class="chk"><input type="radio" name="impM" value="replace"> Replace all current mods</label>
   </fieldset>
-  <fieldset id="impOvG"><legend>Overrides (carpetas extra)</legend>
+  <fieldset id="impOvG"><legend>Overrides (extra folders)</legend>
     <p class="note" id="impOvTxt" style="margin-top:0"></p>
-    <label class="chk"><input type="radio" name="impO" value="add" checked> Añadir a los actuales (si una ruta existe, se sobrescribe)</label>
-    <label class="chk"><input type="radio" name="impO" value="replace"> Reemplazar todos los overrides actuales</label>
+    <label class="chk"><input type="radio" name="impO" value="add" checked> Add to the current ones (an existing path is overwritten)</label>
+    <label class="chk"><input type="radio" name="impO" value="replace"> Replace all current overrides</label>
   </fieldset>
-  <fieldset id="impPackG"><legend>Ajustes del pack</legend>
-    <label class="chk"><input type="checkbox" id="impPack"> Usar nombre, versión de Minecraft y loader del ZIP</label>
+  <fieldset id="impPackG"><legend>Pack settings</legend>
+    <label class="chk"><input type="checkbox" id="impPack"> Use the name, Minecraft version and loader from the ZIP</label>
   </fieldset>
-  <div class="row" style="justify-content:flex-end"><button id="impCancel">Cancelar</button><button class="pri" id="impOk">Importar</button></div>
+  <div class="row" style="justify-content:flex-end"><button id="impCancel">Cancel</button><button class="pri" id="impOk">Import</button></div>
 </dialog>
 <dialog id="verDlg">
   <h2 id="verTitle" style="font-size:17px"></h2>
-  <label class="chk" style="margin:6px 0 0"><input type="checkbox" id="verAll"> Mostrar también versiones de otras versiones de Minecraft</label>
+  <label class="chk" style="margin:6px 0 0"><input type="checkbox" id="verAll"> Also show versions for other Minecraft versions</label>
   <div id="verBody"></div>
-  <div class="row" style="justify-content:flex-end"><button id="verClose">Cerrar</button></div>
+  <div class="row" style="justify-content:flex-end"><button id="verClose">Close</button></div>
 </dialog>
 <div id="toast" role="status"></div>
 
@@ -226,18 +226,18 @@ const MR="https://api.modrinth.com/v2";
 const CF_LOADER={forge:1,fabric:4,quilt:5,neoforge:6};
 const CF_LOADER_REV={1:"forge",4:"fabric",5:"quilt",6:"neoforge"};
 
-let mods=[];                 // lista de mods del pack
-const jarBlobs=new Map();    // id -> File/Blob de JARs locales
-const overrideEntries=new Map(); // ruta relativa -> entrada JSZip con el contenido
-let overrideFiles=[];        // rutas de overrides no-jar
+let mods=[];                 // the pack's mod list
+const jarBlobs=new Map();    // id -> File/Blob of local JARs
+const overrideEntries=new Map(); // relative path -> JSZip entry with the content
+let overrideFiles=[];        // non-jar override paths
 
 const uid=()=>crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(16).slice(2);
 
-/* ---------- Estado aplicado (base) vs borrador (lo que ves) ---------- */
+/* ---------- Applied state (base) vs draft (what you see) ---------- */
 const SET=["pId","pName","pVer","pAuthor","pDesc","mc","loader","lver","java","ram"];
-const SET_LABEL={pId:"ID del modpack",pName:"Nombre",pVer:"Versión del pack",pAuthor:"Autor",pDesc:"Descripción",mc:"Minecraft",loader:"Loader",lver:"Versión del loader",java:"Java mínimo",ram:"RAM recomendada (MB)"};
-let library={activeId:null,packs:{}};   // todos los modpacks: libId -> estado completo (el activo se vuelca desde las variables globales)
-let base={settings:{},mods:[],ovFiles:[],ovEntries:new Map()};   // último estado aplicado: es lo que se exporta
+const SET_LABEL={pId:"Modpack ID",pName:"Name",pVer:"Pack version",pAuthor:"Author",pDesc:"Description",mc:"Minecraft",loader:"Loader",lver:"Loader version",java:"Minimum Java",ram:"Recommended RAM (MB)"};
+let library={activeId:null,packs:{}};   // all modpacks: libId -> full state (the active one is dumped from the global variables)
+let base={settings:{},mods:[],ovFiles:[],ovEntries:new Map()};   // last applied state: this is what gets exported
 let changes=[];
 const clone=o=>JSON.parse(JSON.stringify(o));
 const readSettings=()=>Object.fromEntries(SET.map(f=>[f,$("#"+f).value.trim()]));
@@ -245,12 +245,12 @@ const writeSettings=st=>SET.forEach(f=>{if(st[f]!=null)$("#"+f).value=st[f]});
 const snapshot=()=>({settings:readSettings(),mods:clone(mods),ovFiles:[...overrideFiles],ovEntries:new Map(overrideEntries)});
 function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display="none",3800)}
 
-/* ---------- Persistencia (solo comodidad por navegador) ---------- */
+/* ---------- Persistence (per-browser convenience only) ---------- */
 const FIELDS=[...SET,"cfKey","cfBase"];
 
-/* ---------- Biblioteca de modpacks ---------- */
-// Cada modpack guarda: ajustes, borrador (mods), último estado aplicado (base) y overrides. Los JAR locales y el
-// contenido de los overrides solo viven en memoria: se conservan al cambiar de modpack, pero no al recargar la página.
+/* ---------- Modpack library ---------- */
+// Each modpack stores: settings, draft (mods), last applied state (base) and overrides. Local JARs and the
+// overrides content only live in memory: they are kept when switching modpacks, but not when reloading the page.
 function captureCurrent(){return{libId:library.activeId,settings:readSettings(),mods,base,overrideFiles:[...overrideFiles],overrideEntries:new Map(overrideEntries)}}
 function restore(st){writeSettings(st.settings);mods=st.mods;base=st.base;overrideFiles=[...st.overrideFiles];overrideEntries.clear();st.overrideEntries.forEach((v,k)=>overrideEntries.set(k,v));$("#filter").value=""}
 function newPackState(name,pId){
@@ -279,7 +279,7 @@ function load(){
       if(ids.length){library.activeId=library.packs[d.activeId]?d.activeId:ids[0];restore(library.packs[library.activeId]);return true}
       return false;
     }
-    const old=localStorage.getItem("mpf");   // migración desde la versión de un solo modpack
+    const old=localStorage.getItem("mpf");   // migration from the single-modpack version
     if(old){
       const d=JSON.parse(old),settings={};SET.forEach(f=>{if(d[f]!=null)settings[f]=d[f]});
       if(!settings.pId)settings.pId=uid();
@@ -292,14 +292,14 @@ function load(){
   return false;
 }
 
-/* ---------- Utilidades ---------- */
+/* ---------- Utilities ---------- */
 const ctx=()=>({mc:$("#mc").value.trim(),loader:$("#loader").value});
 async function jget(url,opt){const r=await fetch(url,opt);if(!r.ok)throw new Error(r.status+" "+r.statusText);return r.json()}
 async function hashBuf(buf,algo){const h=await crypto.subtle.digest(algo,buf);return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join("")}
 function download(name,blob){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
 const has=(src,pid)=>mods.some(m=>m.source===src&&String(m.projectId)===String(pid));
 
-/* ---------- Versiones de Minecraft y loader ---------- */
+/* ---------- Minecraft and loader versions ---------- */
 async function loadMc(){
   try{const v=await jget(MR+"/tag/game_version");$("#mcList").innerHTML=v.filter(x=>x.version_type==="release").map(x=>`<option value="${esc(x.version)}">`).join("")}catch(e){}
 }
@@ -320,14 +320,14 @@ async function loadLoaderVersions(autofill=true){
 async function mrSearch(){
   const {mc,loader}=ctx(),q=$("#mrQ").value.trim();
   const facets=[["project_type:mod"]];if(mc)facets.push(["versions:"+mc]);facets.push(["categories:"+loader]);
-  $("#mrRes").innerHTML='<p class="note">Buscando…</p>';
+  $("#mrRes").innerHTML='<p class="note">Searching…</p>';
   try{
     const r=await jget(`${MR}/search?query=${encodeURIComponent(q)}&limit=20&facets=${encodeURIComponent(JSON.stringify(facets))}`);
-    $("#mrRes").innerHTML=r.hits.length?r.hits.map((h,i)=>resHtml({icon:h.icon_url,title:h.title,desc:h.description,meta:`${h.author} · ${h.downloads.toLocaleString("es")} descargas`,added:has("modrinth",h.project_id),i,kind:"mr"})).join(""):'<p class="empty">Sin resultados para esta versión y loader.</p>';
+    $("#mrRes").innerHTML=r.hits.length?r.hits.map((h,i)=>resHtml({icon:h.icon_url,title:h.title,desc:h.description,meta:`${h.author} · ${h.downloads.toLocaleString("en")} downloads`,added:has("modrinth",h.project_id),i,kind:"mr"})).join(""):'<p class="empty">No results for this version and loader.</p>';
     $("#mrRes").dataset.hits=JSON.stringify(r.hits);
-  }catch(e){$("#mrRes").innerHTML=`<p class="note w">No se pudo consultar Modrinth: ${esc(e.message)}</p>`}
+  }catch(e){$("#mrRes").innerHTML=`<p class="note w">Could not query Modrinth: ${esc(e.message)}</p>`}
 }
-function resHtml(o){return `<div class="res">${o.icon?`<img src="${esc(o.icon)}" alt="" loading="lazy">`:'<div class="ic">mod</div>'}<div class="b"><div class="t">${esc(o.title)}</div><div class="d">${esc(o.desc)}</div><div class="note" style="margin:2px 0 0">${esc(o.meta)}</div></div><button class="sm ${o.added?"":"pri"}" data-add="${o.kind}:${o.i}" ${o.added?"disabled":""}>${o.added?"Añadido":"Añadir"}</button></div>`}
+function resHtml(o){return `<div class="res">${o.icon?`<img src="${esc(o.icon)}" alt="" loading="lazy">`:'<div class="ic">mod</div>'}<div class="b"><div class="t">${esc(o.title)}</div><div class="d">${esc(o.desc)}</div><div class="note" style="margin:2px 0 0">${esc(o.meta)}</div></div><button class="sm ${o.added?"":"pri"}" data-add="${o.kind}:${o.i}" ${o.added?"disabled":""}>${o.added?"Added":"Add"}</button></div>`}
 
 async function mrAdd(info,{versionId=null,depth=0}={}){
   const {mc,loader}=ctx();
@@ -339,7 +339,7 @@ async function mrAdd(info,{versionId=null,depth=0}={}){
     const vs=await jget(`${MR}/project/${info.id}/version?${q}`);
     ver=vs.find(v=>v.version_type==="release")||vs[0];
   }
-  if(!ver){toast(`"${info.title}" no tiene versión para ${mc||"cualquier versión"} / ${loader}`);return}
+  if(!ver){toast(`"${info.title}" has no version for ${mc||"any version"} / ${loader}`);return}
   const f=ver.files.find(x=>x.primary)||ver.files[0];
   mods.push({
     id:uid(),source:"modrinth",projectId:info.id,slug:info.slug,name:info.title,summary:info.description,iconUrl:info.icon_url||null,
@@ -353,7 +353,7 @@ async function mrAdd(info,{versionId=null,depth=0}={}){
   if($("#autoDeps").checked&&depth<4){
     for(const d of ver.dependencies.filter(d=>d.dependency_type==="required"&&d.project_id)){
       if(has("modrinth",d.project_id))continue;
-      try{const p=await jget(`${MR}/project/${d.project_id}`);await mrAdd({id:p.id,slug:p.slug,title:p.title,description:p.description,icon_url:p.icon_url,client_side:p.client_side,server_side:p.server_side},{versionId:d.version_id,depth:depth+1})}catch(e){toast("Dependencia no resuelta: "+d.project_id)}
+      try{const p=await jget(`${MR}/project/${d.project_id}`);await mrAdd({id:p.id,slug:p.slug,title:p.title,description:p.description,icon_url:p.icon_url,client_side:p.client_side,server_side:p.server_side},{versionId:d.version_id,depth:depth+1})}catch(e){toast("Unresolved dependency: "+d.project_id)}
     }
   }
 }
@@ -361,7 +361,7 @@ async function mrAdd(info,{versionId=null,depth=0}={}){
 /* ---------- CurseForge ---------- */
 const cfBase=()=>($("#cfBase").value.trim()||"https://api.curseforge.com").replace(/\/$/,"");
 async function cf(path,opt={}){
-  const key=$("#cfKey").value.trim();if(!key)throw new Error("Falta la API key de CurseForge");
+  const key=$("#cfKey").value.trim();if(!key)throw new Error("The CurseForge API key is missing");
   return jget(cfBase()+path,{...opt,headers:{"x-api-key":key,Accept:"application/json",...(opt.body?{"Content-Type":"application/json"}:{})}});
 }
 const cfEdge=(id,name)=>`https://edge.forgecdn.net/files/${Math.floor(id/1000)}/${id%1000}/${encodeURIComponent(name)}`;
@@ -369,19 +369,19 @@ const cfHashes=f=>{const h={};(f.hashes||[]).forEach(x=>{if(x.algo===1)h.sha1=x.
 function cfFileEntry(f){return{name:f.fileName,size:f.fileLength,downloadUrl:f.downloadUrl||cfEdge(f.id,f.fileName),downloadUrlRestricted:!f.downloadUrl,hashes:cfHashes(f)}}
 async function cfSearch(){
   const {mc,loader}=ctx();const p=new URLSearchParams({gameId:432,classId:6,searchFilter:$("#cfQ").value.trim(),pageSize:20,sortField:2,sortOrder:"desc",modLoaderType:CF_LOADER[loader]});if(mc)p.set("gameVersion",mc);
-  $("#cfRes").innerHTML='<p class="note">Buscando…</p>';
+  $("#cfRes").innerHTML='<p class="note">Searching…</p>';
   try{
     const r=(await cf("/v1/mods/search?"+p)).data;
     $("#cfRes").dataset.hits=JSON.stringify(r);
-    $("#cfRes").innerHTML=r.length?r.map((h,i)=>resHtml({icon:h.logo?.thumbnailUrl,title:h.name,desc:h.summary,meta:`${h.authors?.[0]?.name||""} · ${Math.round(h.downloadCount).toLocaleString("es")} descargas`,added:has("curseforge",h.id),i,kind:"cf"})).join(""):'<p class="empty">Sin resultados.</p>';
-  }catch(e){$("#cfRes").innerHTML=`<p class="note w">${esc(e.message)}. Si la key es válida, el bloqueo suele ser CORS: configura un proxy en "URL base".</p>`}
+    $("#cfRes").innerHTML=r.length?r.map((h,i)=>resHtml({icon:h.logo?.thumbnailUrl,title:h.name,desc:h.summary,meta:`${h.authors?.[0]?.name||""} · ${Math.round(h.downloadCount).toLocaleString("en")} downloads`,added:has("curseforge",h.id),i,kind:"cf"})).join(""):'<p class="empty">No results.</p>';
+  }catch(e){$("#cfRes").innerHTML=`<p class="note w">${esc(e.message)}. If the key is valid, the block is usually CORS: set up a proxy in "Base URL".</p>`}
 }
 async function cfAdd(h){
   const {mc,loader}=ctx();if(has("curseforge",h.id))return;
   const p=new URLSearchParams({pageSize:50,modLoaderType:CF_LOADER[loader]});if(mc)p.set("gameVersion",mc);
   const files=(await cf(`/v1/mods/${h.id}/files?`+p)).data.sort((a,b)=>new Date(b.fileDate)-new Date(a.fileDate));
   const f=files.find(x=>x.releaseType===1)||files[0];
-  if(!f){toast(`"${h.name}" no tiene archivo para ${mc||"cualquier versión"} / ${loader}`);return}
+  if(!f){toast(`"${h.name}" has no file for ${mc||"any version"} / ${loader}`);return}
   mods.push({id:uid(),source:"curseforge",projectId:h.id,slug:h.slug,name:h.name,summary:h.summary,iconUrl:h.logo?.thumbnailUrl||null,
     versionId:f.id,versionNumber:f.displayName,versionType:({1:"release",2:"beta",3:"alpha"})[f.releaseType]||"release",
     gameVersions:f.gameVersions.filter(v=>/^\d/.test(v)),loaders:f.gameVersions.map(v=>v.toLowerCase()).filter(v=>CF_LOADER[v]),
@@ -389,11 +389,11 @@ async function cfAdd(h){
     dependencies:(f.dependencies||[]).map(d=>({source:"curseforge",projectId:d.modId,versionId:null,type:({1:"embedded",2:"optional",3:"required",4:"tool",5:"incompatible",6:"include"})[d.relationType]||"required"}))});
   for(const d of (f.dependencies||[]).filter(d=>d.relationType===3)){
     if(has("curseforge",d.modId))continue;
-    try{await cfAdd((await cf("/v1/mods/"+d.modId)).data)}catch(e){toast("Dependencia no resuelta: "+d.modId)}
+    try{await cfAdd((await cf("/v1/mods/"+d.modId)).data)}catch(e){toast("Unresolved dependency: "+d.modId)}
   }
 }
 
-/* ---------- JAR locales ---------- */
+/* ---------- Local JARs ---------- */
 async function readJarMeta(file){
   const m={modId:null,name:null,version:null,description:null,loader:null};
   try{
@@ -414,7 +414,7 @@ async function readJarMeta(file){
 async function addJar(file){
   const buf=await file.arrayBuffer();
   const [sha1,sha256]=await Promise.all([hashBuf(buf,"SHA-1"),hashBuf(buf,"SHA-256")]);
-  if(mods.some(x=>x.file?.hashes?.sha1===sha1)){toast(file.name+" ya está en el pack");return}
+  if(mods.some(x=>x.file?.hashes?.sha1===sha1)){toast(file.name+" is already in the pack");return}
   const meta=await readJarMeta(file),id=uid();
   jarBlobs.set(id,file);
   mods.push({id,source:"local",projectId:meta.modId,slug:meta.modId,name:meta.name||meta.modId||file.name.replace(/\.jar$/i,""),summary:(meta.description||"").trim().split("\n")[0],iconUrl:null,
@@ -422,7 +422,7 @@ async function addJar(file){
     file:{name:file.name,size:file.size,downloadUrl:null,bundledPath:"local-mods/"+file.name,hashes:{sha1,sha256}},dependencies:[]});
 }
 
-/* ---------- Importar CurseForge / overrides ---------- */
+/* ---------- Import CurseForge / overrides ---------- */
 const JUNK=/(^|\/)(__MACOSX\/|\.DS_Store$|Thumbs\.db$)/;
 function collectOverrides(z,prefix){
   const out=[],jars=[];
@@ -445,8 +445,8 @@ function askImport(o){return new Promise(res=>{
   $("#impTitle").textContent=o.title;$("#impInfo").textContent=o.info;
   $("#impWarn").hidden=!o.warn;$("#impWarn").textContent=o.warn||"";
   $("#impTargetG").hidden=!o.target;$("#impModsG").hidden=!o.nMods;$("#impOvG").hidden=!o.nOv;$("#impPackG").hidden=!o.pack;
-  $("#impModsTxt").textContent=`El ZIP trae ${o.nMods} mods. Tu pack tiene ${mods.length}.`;
-  $("#impOvTxt").textContent=`El ZIP trae ${o.nOv} archivos. Tu pack tiene ${overrideFiles.length}.`;
+  $("#impModsTxt").textContent=`The ZIP contains ${o.nMods} mods. Your pack has ${mods.length}.`;
+  $("#impOvTxt").textContent=`The ZIP contains ${o.nOv} files. Your pack has ${overrideFiles.length}.`;
   d.querySelectorAll('input[type=radio][value="add"]').forEach(r=>r.checked=true);
   d.querySelectorAll("input[name=impT]").forEach(r=>r.checked=r.value==="cur");
   $("#impPack").checked=!mods.length;
@@ -457,18 +457,18 @@ function askImport(o){return new Promise(res=>{
 })}
 async function importCf(file){
   const z=await JSZip.loadAsync(file);const mf=z.file("manifest.json");
-  if(!mf){toast("El ZIP no contiene manifest.json: ¿es un modpack de CurseForge?");return}
+  if(!mf){toast("The ZIP does not contain manifest.json: is it a CurseForge modpack?");return}
   const m=JSON.parse(await mf.async("string"));
-  if(m.manifestType&&m.manifestType!=="minecraftModpack"){toast("Tipo de manifiesto no soportado: "+m.manifestType);return}
+  if(m.manifestType&&m.manifestType!=="minecraftModpack"){toast("Unsupported manifest type: "+m.manifestType);return}
   const files=m.files||[];
   const ml=(m.minecraft?.modLoaders||[]).find(x=>x.primary)||m.minecraft?.modLoaders?.[0];
   const zMc=m.minecraft?.version||"",zLoader=ml?ml.id.slice(0,ml.id.indexOf("-")):"",zLver=ml?ml.id.slice(ml.id.indexOf("-")+1):"";
   const {out,jars}=collectOverrides(z,(m.overrides||"overrides")+"/");
   const curMc=$("#mc").value.trim(),curL=$("#loader").value;
-  const diff=[];if(zMc&&curMc&&zMc!==curMc)diff.push(`Minecraft ${zMc} (tu pack: ${curMc})`);if(zLoader&&mods.length&&zLoader!==curL)diff.push(`${zLoader} (tu pack: ${curL})`);
-  const choice=await askImport({title:"Importar «"+(m.name||file.name)+"»",
-    info:`Minecraft ${zMc||"?"} · ${ml?ml.id:"sin loader"} · ${files.length} mods de CurseForge, ${jars.length} JAR locales, ${out.length} archivos de overrides${out.length?" ("+folders(out)+")":""}.`,
-    warn:diff.length?"El ZIP es para "+diff.join(" y ")+". Si no actualizas los ajustes, algunos mods pueden no ser compatibles.":"",
+  const diff=[];if(zMc&&curMc&&zMc!==curMc)diff.push(`Minecraft ${zMc} (your pack: ${curMc})`);if(zLoader&&mods.length&&zLoader!==curL)diff.push(`${zLoader} (your pack: ${curL})`);
+  const choice=await askImport({title:"Import «"+(m.name||file.name)+"»",
+    info:`Minecraft ${zMc||"?"} · ${ml?ml.id:"no loader"} · ${files.length} CurseForge mods, ${jars.length} local JARs, ${out.length} override files${out.length?" ("+folders(out)+")":""}.`,
+    warn:diff.length?"The ZIP is for "+diff.join(" and ")+". If you do not update the settings, some mods may not be compatible.":"",
     nMods:files.length+jars.length,nOv:out.length,pack:true,target:true});
   if(!choice)return;
   if(choice.target==="new"){createPack(m.name||file.name.replace(/\.zip$/i,""),{autofill:false});choice.pack=true;choice.mods="add";choice.ov="add"}
@@ -490,10 +490,10 @@ async function importCf(file){
   for(const j of jars)await addJar(new File([await j.entry.async("blob")],j.rel.slice(5)));
   applyOverrides(out,choice.ov);
   render();
-  toast(`Importados ${entries.length} mods`+(files.length-entries.length?` (${files.length-entries.length} duplicados omitidos)`:"")+(out.length?` y ${out.length} overrides`:""));
+  toast(`Imported ${entries.length} mods`+(files.length-entries.length?` (${files.length-entries.length} duplicates skipped)`:"")+(out.length?` and ${out.length} overrides`:""));
   if(entries.length){
     if($("#cfKey").value.trim())await resolveCf(entries);
-    else setTimeout(()=>toast("Sin API key: los mods quedan solo con IDs. Añade la key y vuelve a importar para resolver nombres y URLs."),4200);
+    else setTimeout(()=>toast("No API key: the mods only have IDs. Add the key and import again to resolve names and URLs."),4200);
   }
 }
 async function importOverridesOnly(file){
@@ -502,10 +502,10 @@ async function importOverridesOnly(file){
   if(mf){try{prefix=(JSON.parse(await mf.async("string")).overrides||"overrides")+"/"}catch(e){prefix="overrides/"}}
   else if(Object.keys(z.files).some(p=>p.startsWith("overrides/")))prefix="overrides/";
   const {out,jars}=collectOverrides(z,prefix);
-  if(!out.length){toast("No se encontraron archivos de overrides en el ZIP");return}
-  const choice=await askImport({title:"Importar overrides",info:`${out.length} archivos (${folders(out)})`+(jars.length?`. Se ignoran ${jars.length} JAR de mods/, porque solo se importan overrides`:"")+".",nMods:0,nOv:out.length,pack:false});
+  if(!out.length){toast("No override files were found in the ZIP");return}
+  const choice=await askImport({title:"Import overrides",info:`${out.length} files (${folders(out)})`+(jars.length?`. ${jars.length} JARs in mods/ are ignored, because only overrides are imported`:"")+".",nMods:0,nOv:out.length,pack:false});
   if(!choice)return;
-  applyOverrides(out,choice.ov);render();toast(`Overrides importados: ${out.length} archivos`);
+  applyOverrides(out,choice.ov);render();toast(`Overrides imported: ${out.length} files`);
 }
 async function resolveCf(entries){
   try{
@@ -515,17 +515,17 @@ async function resolveCf(entries){
     for(const e of entries){const f=fm.get(e.versionId),p=mm.get(e.projectId);if(p){e.name=p.name;e.slug=p.slug;e.summary=p.summary;e.iconUrl=p.logo?.thumbnailUrl||null}
       if(f){e.versionNumber=f.displayName;e.versionType=({1:"release",2:"beta",3:"alpha"})[f.releaseType];e.gameVersions=f.gameVersions.filter(v=>/^\d/.test(v));e.loaders=f.gameVersions.map(v=>v.toLowerCase()).filter(v=>CF_LOADER[v]);e.file=cfFileEntry(f);
         e.dependencies=(f.dependencies||[]).map(d=>({source:"curseforge",projectId:d.modId,versionId:null,type:({1:"embedded",2:"optional",3:"required",4:"tool",5:"incompatible",6:"include"})[d.relationType]||"required"}));e.unresolved=false}}
-    render();toast("Mods resueltos con la API de CurseForge");
-  }catch(e){toast("No se pudo resolver con CurseForge: "+e.message)}
+    render();toast("Mods resolved with the CurseForge API");
+  }catch(e){toast("Could not resolve with CurseForge: "+e.message)}
 }
 
-/* ---------- Exportar ---------- */
+/* ---------- Export ---------- */
 function buildManifest(withBundle,st=base){
   const S=st.settings,sideOf=m=>m.side||{client:"unknown",server:"unknown"};
   return{
     schema:"modpack-forge/1",
     generator:{name:"Modpack Forge",exportedAt:new Date().toISOString()},
-    pack:{id:S.pId||uid(),slug:slug(S.pName||"")||"modpack",name:S.pName||"Modpack sin nombre",version:S.pVer||"1.0.0",author:S.pAuthor||"",description:S.pDesc||""},
+    pack:{id:S.pId||uid(),slug:slug(S.pName||"")||"modpack",name:S.pName||"Unnamed modpack",version:S.pVer||"1.0.0",author:S.pAuthor||"",description:S.pDesc||""},
     minecraft:{version:S.mc||""},
     loader:{type:S.loader,version:S.lver||""},
     runtime:{javaMinVersion:+S.java||null,recommendedRamMb:+S.ram||null},
@@ -545,42 +545,42 @@ function buildManifest(withBundle,st=base){
 }
 const slug=s=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 function validate(st=base){
-  const w=[],S=st.settings;if(!S.mc)w.push("Falta la versión de Minecraft");if(!S.lver)w.push("Falta la versión del loader");
-  if(!st.mods.length)w.push("El pack no tiene mods");
-  const un=st.mods.filter(m=>m.unresolved).length;if(un)w.push(un+" mods de CurseForge sin resolver (solo tienen IDs)");
-  const nu=st.mods.filter(m=>!m.unresolved&&!m.file?.downloadUrl&&m.source!=="local").length;if(nu)w.push(nu+" mods sin URL de descarga");
+  const w=[],S=st.settings;if(!S.mc)w.push("The Minecraft version is missing");if(!S.lver)w.push("The loader version is missing");
+  if(!st.mods.length)w.push("The pack has no mods");
+  const un=st.mods.filter(m=>m.unresolved).length;if(un)w.push(un+" unresolved CurseForge mods (they only have IDs)");
+  const nu=st.mods.filter(m=>!m.unresolved&&!m.file?.downloadUrl&&m.source!=="local").length;if(nu)w.push(nu+" mods without a download URL");
   return w;
 }
 const fileBase=()=>slug(base.settings.pName||"")||"modpack";
 function exportJson(){
-  const w=validate();if(w.length)toast("Aviso: "+w[0]+(w.length>1?` (+${w.length-1} más)`:""));
+  const w=validate();if(w.length)toast("Warning: "+w[0]+(w.length>1?` (+${w.length-1} more)`:""));
   download(fileBase()+".json",new Blob([JSON.stringify(buildManifest(false),null,2)],{type:"application/json"}));
 }
 async function exportZip(){
   const z=new JSZip();z.file("modpack.json",JSON.stringify(buildManifest(true),null,2));
   for(const m of base.mods)if(m.source==="local"&&jarBlobs.has(m.id))z.file(m.file.bundledPath,jarBlobs.get(m.id));
   for(const rel of base.ovFiles){const e=base.ovEntries.get(rel);if(e)z.file("overrides/"+rel,e.async("blob"))}
-  toast("Generando ZIP…");
+  toast("Generating ZIP…");
   download(fileBase()+".zip",await z.generateAsync({type:"blob",compression:"DEFLATE"}));
 }
 async function importJson(file){
-  const j=JSON.parse(await file.text());if(!String(j.schema||"").startsWith("modpack-forge/")){toast("No es un JSON de Modpack Forge");return}
+  const j=JSON.parse(await file.text());if(!String(j.schema||"").startsWith("modpack-forge/")){toast("This is not a Modpack Forge JSON");return}
   let pid=/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(j.pack?.id||"")?j.pack.id:null;
   if(library.activeId)library.packs[library.activeId]=captureCurrent();
   const same=pid&&Object.values(library.packs).find(st=>st.base.settings.pId===pid||st.settings.pId===pid);
   if(same){
-    if(confirm(`Ya tienes un modpack con este ID: «${same.settings.pName||"sin nombre"}».\n\nAceptar = reemplazar su contenido (quedará como cambios pendientes).\nCancelar = importarlo como un modpack nuevo con otro ID.`))switchPack(same.libId);
-    else{pid=uid();createPack(j.pack.name||"Modpack importado",{autofill:false,pId:pid})}
-  }else{pid=pid||uid();createPack(j.pack?.name||"Modpack importado",{autofill:false,pId:pid})}
+    if(confirm(`You already have a modpack with this ID: «${same.settings.pName||"unnamed"}».\n\nOK = replace its contents (they will appear as pending changes).\nCancel = import it as a new modpack with a different ID.`))switchPack(same.libId);
+    else{pid=uid();createPack(j.pack.name||"Imported modpack",{autofill:false,pId:pid})}
+  }else{pid=pid||uid();createPack(j.pack?.name||"Imported modpack",{autofill:false,pId:pid})}
   $("#pId").value=pid;
   $("#pName").value=j.pack.name;$("#pVer").value=j.pack.version;$("#pAuthor").value=j.pack.author||"";$("#pDesc").value=j.pack.description||"";
   $("#mc").value=j.minecraft.version;$("#loader").value=j.loader.type;$("#lver").value=j.loader.version;$("#java").value=j.runtime?.javaMinVersion||"";$("#ram").value=j.runtime?.recommendedRamMb||"";
   mods=j.mods.map(m=>({id:m.id||uid(),source:m.source,projectId:m.projectId,slug:m.slug,name:m.name,summary:m.summary,iconUrl:m.iconUrl,versionId:m.version?.id,versionNumber:m.version?.number,versionType:m.version?.type,
     gameVersions:m.version?.gameVersions||[],loaders:m.version?.loaders||[],side:m.side,required:m.required,enabled:m.enabled,file:m.file,dependencies:m.dependencies||[],unresolved:m.resolved===false}));
-  overrideEntries.clear();overrideFiles=j.overrides?.files||[];render();toast("JSON cargado ("+mods.length+" mods). Revisa los cambios pendientes y aplícalos. Los JAR locales deben volver a añadirse.");
+  overrideEntries.clear();overrideFiles=j.overrides?.files||[];render();toast("JSON loaded ("+mods.length+" mods). Review the pending changes and apply them. Local JARs must be added again.");
 }
 
-/* ---------- Cambiar versión de un mod ---------- */
+/* ---------- Change a mod's version ---------- */
 let verItems=[],verIdx=-1;
 const RT={1:"release",2:"beta",3:"alpha"},DEP={1:"embedded",2:"optional",3:"required",4:"tool",5:"incompatible",6:"include"};
 function applyMr(m,v){
@@ -596,7 +596,7 @@ function applyCf(m,f){
 }
 async function loadVersions(){
   const m=mods[verIdx],{mc,loader}=ctx(),all=$("#verAll").checked,body=$("#verBody");
-  body.innerHTML='<p class="note">Cargando versiones…</p>';
+  body.innerHTML='<p class="note">Loading versions…</p>';
   try{
     if(m.source==="modrinth"){
       const q=new URLSearchParams({loaders:JSON.stringify([loader])});if(mc&&!all)q.set("game_versions",JSON.stringify([mc]));
@@ -607,25 +607,25 @@ async function loadVersions(){
       verItems=fs.map(f=>({cur:f.id===m.versionId,label:f.displayName,type:RT[f.releaseType]||"release",date:f.fileDate,gv:f.gameVersions.filter(v=>/^\d/.test(v)),apply:()=>applyCf(m,f)}));
     }
     body.innerHTML=verItems.length?verItems.map((v,k)=>`<div class="res ${v.cur?"cur":""}"><div class="b"><div class="t">${esc(v.label)}</div>
-      <div class="note" style="margin:0"><span class="tag">${esc(v.type)}</span>${new Date(v.date).toLocaleDateString("es")} · MC ${esc(v.gv.slice(0,4).join(", "))}${v.gv.length>4?"…":""}</div></div>
-      <button class="sm ${v.cur?"":"pri"}" data-pick="${k}" ${v.cur?"disabled":""}>${v.cur?"Actual":"Usar"}</button></div>`).join(""):'<p class="empty">No hay versiones para este loader y versión de Minecraft. Marca la casilla de arriba para ver otras.</p>';
-  }catch(e){body.innerHTML=`<p class="note w">No se pudieron cargar las versiones: ${esc(e.message)}</p>`}
+      <div class="note" style="margin:0"><span class="tag">${esc(v.type)}</span>${new Date(v.date).toLocaleDateString("en")} · MC ${esc(v.gv.slice(0,4).join(", "))}${v.gv.length>4?"…":""}</div></div>
+      <button class="sm ${v.cur?"":"pri"}" data-pick="${k}" ${v.cur?"disabled":""}>${v.cur?"Current":"Use"}</button></div>`).join(""):'<p class="empty">There are no versions for this loader and Minecraft version. Tick the box above to see others.</p>';
+  }catch(e){body.innerHTML=`<p class="note w">Could not load the versions: ${esc(e.message)}</p>`}
 }
-function openVersions(i){verIdx=i;$("#verTitle").textContent="Versión de "+mods[i].name;$("#verAll").checked=false;$("#verDlg").showModal();loadVersions()}
+function openVersions(i){verIdx=i;$("#verTitle").textContent="Version of "+mods[i].name;$("#verAll").checked=false;$("#verDlg").showModal();loadVersions()}
 $("#verAll").onchange=loadVersions;
 $("#verClose").onclick=()=>$("#verDlg").close();
 $("#verBody").addEventListener("click",e=>{
   const b=e.target.closest("[data-pick]");if(!b)return;
-  verItems[+b.dataset.pick].apply();$("#verDlg").close();render();toast(`${mods[verIdx].name}: versión cambiada a ${mods[verIdx].versionNumber}`);
+  verItems[+b.dataset.pick].apply();$("#verDlg").close();render();toast(`${mods[verIdx].name}: version changed to ${mods[verIdx].versionNumber}`);
 });
 
-/* ---------- Cambios pendientes (stage) ---------- */
-const short=v=>{v=String(v??"");return v?(v.length>44?v.slice(0,44)+"…":v):"(vacío)"};
+/* ---------- Pending changes (stage) ---------- */
+const short=v=>{v=String(v??"");return v?(v.length>44?v.slice(0,44)+"…":v):"(empty)"};
 function modDiff(b,w){
   const d=[];
-  if(b.versionId!==w.versionId||b.versionNumber!==w.versionNumber)d.push(`versión ${b.versionNumber||b.file?.name||"sin resolver"} → ${w.versionNumber||w.file?.name||"sin resolver"}`);
-  if((b.enabled!==false)!==(w.enabled!==false))d.push(w.enabled===false?"se desactiva":"se activa");
-  if(w.source==="local"&&(b.file?.downloadUrl||null)!==(w.file?.downloadUrl||null))d.push("URL de descarga modificada");
+  if(b.versionId!==w.versionId||b.versionNumber!==w.versionNumber)d.push(`version ${b.versionNumber||b.file?.name||"unresolved"} → ${w.versionNumber||w.file?.name||"unresolved"}`);
+  if((b.enabled!==false)!==(w.enabled!==false))d.push(w.enabled===false?"gets disabled":"gets enabled");
+  if(w.source==="local"&&(b.file?.downloadUrl||null)!==(w.file?.downloadUrl||null))d.push("download URL changed");
   return d;
 }
 function computeChanges(){
@@ -635,11 +635,11 @@ function computeChanges(){
   const bf=new Set(base.ovFiles),cfs=new Set(overrideFiles);
   const added=overrideFiles.filter(r=>!bf.has(r)),removed=base.ovFiles.filter(r=>!cfs.has(r)),over=overrideFiles.filter(r=>bf.has(r)&&base.ovEntries.get(r)!==overrideEntries.get(r));
   if(added.length||removed.length||over.length){
-    const t=[];if(added.length)t.push(`${added.length} nuevos`);if(over.length)t.push(`${over.length} sobrescritos`);if(removed.length)t.push(`${removed.length} eliminados`);
-    out.push({kind:"ov",label:"carpetas extra",detail:t.join(", ")+" ("+folders([...added,...over,...removed].map(rel=>({rel})))+")",
+    const t=[];if(added.length)t.push(`${added.length} new`);if(over.length)t.push(`${over.length} overwritten`);if(removed.length)t.push(`${removed.length} removed`);
+    out.push({kind:"ov",label:"extra folders",detail:t.join(", ")+" ("+folders([...added,...over,...removed].map(rel=>({rel})))+")",
       revert:()=>{overrideFiles=[...base.ovFiles];overrideEntries.clear();base.ovEntries.forEach((v,k)=>overrideEntries.set(k,v))}});
   }
-  // mods (si se quita y se vuelve a añadir el mismo proyecto, se trata como una sola modificación)
+  // mods (removing and re-adding the same project counts as a single modification)
   const bm=new Map(base.mods.map((m,i)=>[m.id,[m,i]])),wm=new Map(mods.map(m=>[m.id,m]));
   const orphan=new Map();
   for(const [id,[b]] of bm)if(!wm.has(id)&&b.source!=="local"&&b.projectId!=null)orphan.set(b.source+":"+b.projectId,b);
@@ -657,10 +657,10 @@ function computeChanges(){
 function renderChanges(){
   changes=computeChanges();const n=changes.length;
   $("#chgCount").textContent=n;$("#chgApply").disabled=!n;$("#chgDiscard").disabled=!n;
-  $("#chgApply").textContent=n?`Aplicar ${n} cambio${n>1?"s":""}`:"Aplicar cambios";
-  const G={add:"+",rem:"−",upd:"~",set:"✎",ov:"▤"},C={add:"add",rem:"rem",upd:"upd",set:"set",ov:"set"},T={add:"Añadir",rem:"Quitar",upd:"Modificar",set:"Ajuste",ov:"Overrides"};
-  $("#chgList").innerHTML=n?changes.map((c,i)=>`<div class="chg"><span class="k ${C[c.kind]}" aria-hidden="true">${G[c.kind]}</span><div class="b"><div><b>${T[c.kind]}:</b> ${esc(c.label)}</div><div class="d">${esc(c.detail)}</div></div><button class="sm" data-rev="${i}">Descartar</button></div>`).join(""):'<p class="empty">Sin cambios pendientes. Lo que añadas, quites o edites aparecerá aquí hasta que lo apliques.</p>';
-  const en=$("#expNote");en.className="note"+(n?" w":"");en.textContent=n?`Hay ${n} cambio${n>1?"s":""} sin aplicar: no se incluirán en la exportación.`:"Se exporta el estado aplicado del pack.";
+  $("#chgApply").textContent=n?`Apply ${n} change${n>1?"s":""}`:"Apply changes";
+  const G={add:"+",rem:"−",upd:"~",set:"✎",ov:"▤"},C={add:"add",rem:"rem",upd:"upd",set:"set",ov:"set"},T={add:"Add",rem:"Remove",upd:"Modify",set:"Setting",ov:"Overrides"};
+  $("#chgList").innerHTML=n?changes.map((c,i)=>`<div class="chg"><span class="k ${C[c.kind]}" aria-hidden="true">${G[c.kind]}</span><div class="b"><div><b>${T[c.kind]}:</b> ${esc(c.label)}</div><div class="d">${esc(c.detail)}</div></div><button class="sm" data-rev="${i}">Discard</button></div>`).join(""):'<p class="empty">No pending changes. Whatever you add, remove or edit will appear here until you apply it.</p>';
+  const en=$("#expNote");en.className="note"+(n?" w":"");en.textContent=n?`There ${n>1?"are":"is"} ${n} unapplied change${n>1?"s":""}: ${n>1?"they":"it"} will not be included in the export.`:"The applied state of the pack is exported.";
 }
 function allModIds(){
   const s=new Set([...base.mods,...mods].map(m=>m.id));
@@ -668,16 +668,16 @@ function allModIds(){
   return s;
 }
 function pruneBlobs(){const keep=allModIds();for(const k of [...jarBlobs.keys()])if(!keep.has(k))jarBlobs.delete(k)}
-function applyAll(){base=snapshot();pruneBlobs();render();toast("Cambios aplicados")}
-function discardAll(){writeSettings(base.settings);mods=clone(base.mods);overrideFiles=[...base.ovFiles];overrideEntries.clear();base.ovEntries.forEach((v,k)=>overrideEntries.set(k,v));pruneBlobs();render();toast("Cambios descartados")}
+function applyAll(){base=snapshot();pruneBlobs();render();toast("Changes applied")}
+function discardAll(){writeSettings(base.settings);mods=clone(base.mods);overrideFiles=[...base.ovFiles];overrideEntries.clear();base.ovEntries.forEach((v,k)=>overrideEntries.set(k,v));pruneBlobs();render();toast("Changes discarded")}
 function refresh(){renderChanges();renderPacks();save()}
 
 function renderPacks(){
   if(library.activeId)library.packs[library.activeId]=captureCurrent();
   const all=Object.values(library.packs);
-  $("#packSel").innerHTML=all.map(st=>`<option value="${esc(st.libId)}"${st.libId===library.activeId?" selected":""}>${esc(st.settings.pName||"Modpack sin nombre")} (${st.mods.length} mods)</option>`).join("");
+  $("#packSel").innerHTML=all.map(st=>`<option value="${esc(st.libId)}"${st.libId===library.activeId?" selected":""}>${esc(st.settings.pName||"Unnamed modpack")} (${st.mods.length} mods)</option>`).join("");
   const loose=all.some(st=>st.mods.some(m=>m.source==="local")||st.overrideFiles.length);
-  $("#packNote").textContent=`${all.length} modpack${all.length>1?"s":""} en este navegador.`+(loose?" Los JAR locales y overrides no se conservan al recargar la página.":"");
+  $("#packNote").textContent=`${all.length} modpack${all.length>1?"s":""} in this browser.`+(loose?" Local JARs and overrides are not kept when reloading the page.":"");
 }
 function switchPack(id){
   if(!library.packs[id])return;
@@ -686,45 +686,45 @@ function switchPack(id){
 }
 function createPack(name,opts={}){
   const st=newPackState(name,opts.pId);library.packs[st.libId]=st;switchPack(st.libId);
-  // Un modpack nuevo arranca "limpio": la versión del loader autorrellenada no cuenta como cambio pendiente.
+  // A new modpack starts "clean": the auto-filled loader version does not count as a pending change.
   if(opts.autofill!==false)loadLoaderVersions(true).then(()=>{if(library.activeId===st.libId&&!mods.length){base.settings=readSettings();render()}});
   return st;
 }
 function duplicatePack(){
   const cur=captureCurrent(),libId=uid();
-  const settings={...cur.settings,pId:uid(),pName:(cur.settings.pName||"Modpack")+" (copia)"},m=clone(cur.mods);
+  const settings={...cur.settings,pId:uid(),pName:(cur.settings.pName||"Modpack")+" (copy)"},m=clone(cur.mods);
   library.packs[libId]={libId,settings,mods:m,base:{settings:{...settings},mods:clone(m),ovFiles:[...cur.overrideFiles],ovEntries:new Map(cur.overrideEntries)},overrideFiles:[...cur.overrideFiles],overrideEntries:new Map(cur.overrideEntries)};
-  switchPack(libId);toast("Modpack duplicado con un ID nuevo");
+  switchPack(libId);toast("Modpack duplicated with a new ID");
 }
 function deletePack(){
   if(!library.packs[library.activeId])return;
-  const name=$("#pName").value.trim()||"sin nombre";
-  if(!confirm(`¿Eliminar el modpack «${name}»?\n\nSe perderán sus mods, cambios pendientes y overrides guardados en este navegador. Los JSON o ZIP que ya exportaste no se tocan.`))return;
+  const name=$("#pName").value.trim()||"unnamed";
+  if(!confirm(`Delete the modpack «${name}»?\n\nIts mods, pending changes and overrides saved in this browser will be lost. JSON or ZIP files you already exported are not touched.`))return;
   delete library.packs[library.activeId];library.activeId=null;
   const next=Object.keys(library.packs)[0];
-  if(next)switchPack(next);else createPack("Mi modpack");
-  pruneBlobs();toast(`Modpack «${name}» eliminado`);
+  if(next)switchPack(next);else createPack("My modpack");
+  pruneBlobs();toast(`Modpack «${name}» deleted`);
 }
 
-/* ---------- Render lista ---------- */
-const SRC={modrinth:["mr","Modrinth"],curseforge:["cf","CurseForge"],local:["lo","JAR local"]};
+/* ---------- Render list ---------- */
+const SRC={modrinth:["mr","Modrinth"],curseforge:["cf","CurseForge"],local:["lo","Local JAR"]};
 function render(){
   renderChanges();renderPacks();
   const mark=new Map(changes.filter(c=>c.mid).map(c=>[c.mid,c.kind]));
   const f=$("#filter").value.toLowerCase();
   const tot=mods.reduce((a,m)=>a+(m.file?.size||0),0);
-  $("#stat").innerHTML=`<span><b>${mods.length}</b> mods</span><span><b>${(tot/1048576).toFixed(1)}</b> MB</span><span>${["modrinth","curseforge","local"].map(s=>`${mods.filter(m=>m.source===s).length} ${SRC[s][1]}`).join(" · ")}</span>`+(overrideFiles.length?`<span>${overrideFiles.length} archivos de overrides</span>`:"");
+  $("#stat").innerHTML=`<span><b>${mods.length}</b> mods</span><span><b>${(tot/1048576).toFixed(1)}</b> MB</span><span>${["modrinth","curseforge","local"].map(s=>`${mods.filter(m=>m.source===s).length} ${SRC[s][1]}`).join(" · ")}</span>`+(overrideFiles.length?`<span>${overrideFiles.length} override files</span>`:"");
   const list=mods.map((m,i)=>[m,i]).filter(([m])=>!f||(m.name||"").toLowerCase().includes(f));
   $("#mods").innerHTML=list.length?list.map(([m,i])=>`<div class="res ${m.enabled===false?"off":""}">${m.iconUrl?`<img src="${esc(m.iconUrl)}" alt="" loading="lazy">`:'<div class="ic">mod</div>'}
-    <div class="b"><div class="t">${esc(m.name)}</div><div class="note" style="margin:0"><span class="tag ${SRC[m.source][0]}">${SRC[m.source][1]}</span>${esc(m.versionNumber||m.file?.name||"")}${mark.get(m.id)==="add"?' <span class="tag new">nuevo</span>':mark.get(m.id)==="upd"?' <span class="tag mod">modificado</span>':""}${m.unresolved?' <span class="tag lo">sin resolver</span>':""}${m.file?.downloadUrlRestricted?' <span class="tag lo">URL restringida</span>':""}${m.source==="local"&&!m.file.downloadUrl?"":""}</div></div>
+    <div class="b"><div class="t">${esc(m.name)}</div><div class="note" style="margin:0"><span class="tag ${SRC[m.source][0]}">${SRC[m.source][1]}</span>${esc(m.versionNumber||m.file?.name||"")}${mark.get(m.id)==="add"?' <span class="tag new">new</span>':mark.get(m.id)==="upd"?' <span class="tag mod">modified</span>':""}${m.unresolved?' <span class="tag lo">unresolved</span>':""}${m.file?.downloadUrlRestricted?' <span class="tag lo">restricted URL</span>':""}${m.source==="local"&&!m.file.downloadUrl?"":""}</div></div>
     <div class="row" style="flex:none;gap:4px">
-      <button class="sm" data-act="tog:${i}" title="Activar o desactivar">${m.enabled===false?"Off":"On"}</button>
-      ${m.source==="local"?`<button class="sm" data-act="url:${i}" title="Definir URL de descarga">URL</button>`:`<button class="sm" data-act="ver:${i}" title="Cambiar la versión del mod">Versión</button>`}
-      <button class="sm dng" data-act="del:${i}" aria-label="Quitar ${esc(m.name)}">✕</button></div></div>`).join(""):'<p class="empty">Todavía no hay mods. Busca en Modrinth o CurseForge, o suelta archivos JAR.</p>';
+      <button class="sm" data-act="tog:${i}" title="Enable or disable">${m.enabled===false?"Off":"On"}</button>
+      ${m.source==="local"?`<button class="sm" data-act="url:${i}" title="Set download URL">URL</button>`:`<button class="sm" data-act="ver:${i}" title="Change the mod version">Version</button>`}
+      <button class="sm dng" data-act="del:${i}" aria-label="Remove ${esc(m.name)}">✕</button></div></div>`).join(""):'<p class="empty">No mods yet. Search Modrinth or CurseForge, or drop JAR files.</p>';
   save();
 }
 
-/* ---------- Eventos ---------- */
+/* ---------- Events ---------- */
 $$(".tabs button").forEach(b=>b.onclick=()=>{$$(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));$$(".pane").forEach(p=>p.hidden=p.id!=="t-"+b.dataset.t)});
 $("#mrGo").onclick=mrSearch;$("#mrQ").addEventListener("keydown",e=>{if(e.key==="Enter")mrSearch()});
 $("#cfGo").onclick=cfSearch;$("#cfQ").addEventListener("keydown",e=>{if(e.key==="Enter")cfSearch()});
@@ -734,14 +734,14 @@ document.addEventListener("click",async e=>{
     try{
       if(k==="mr"){const h=JSON.parse($("#mrRes").dataset.hits)[i];await mrAdd({id:h.project_id,slug:h.slug,title:h.title,description:h.description,icon_url:h.icon_url,client_side:h.client_side,server_side:h.server_side});mrSearch()}
       else{await cfAdd(JSON.parse($("#cfRes").dataset.hits)[i]);cfSearch()}
-    }catch(err){toast("Error: "+err.message);add.disabled=false;add.textContent="Añadir"}
+    }catch(err){toast("Error: "+err.message);add.disabled=false;add.textContent="Add"}
     render();return}
   const act=e.target.closest("[data-act]");
   if(act){const [a,i]=act.dataset.act.split(":");const m=mods[+i];
     if(a==="del")mods.splice(+i,1);
     if(a==="tog")m.enabled=m.enabled===false;
     if(a==="ver"){openVersions(+i);return}
-    if(a==="url"){const u=prompt("URL de descarga directa del JAR (opcional, para que el lanzador no dependa del ZIP):",m.file.downloadUrl||"");if(u!==null)m.file.downloadUrl=u.trim()||null}
+    if(a==="url"){const u=prompt("Direct download URL for the JAR (optional, so the launcher does not depend on the ZIP):",m.file.downloadUrl||"");if(u!==null)m.file.downloadUrl=u.trim()||null}
     render()}
 });
 const pick=(btn,inp)=>$(btn).onclick=()=>$(inp).click();
@@ -749,27 +749,27 @@ pick("#pickOv","#ovIn");pick("#pickJar","#jarIn");pick("#pickCf","#cfIn");pick("
 async function jars(files){for(const f of files)if(/\.jar$/i.test(f.name))await addJar(f);render()}
 $("#jarIn").onchange=e=>jars(e.target.files);
 function dz(sel,fn){const d=$(sel);d.ondragover=e=>{e.preventDefault();d.classList.add("over")};d.ondragleave=()=>d.classList.remove("over");d.ondrop=e=>{e.preventDefault();d.classList.remove("over");fn([...e.dataTransfer.files])}}
-dz("#drop",jars);dz("#dropCf",fs=>fs[0]&&importCf(fs[0]).catch(err=>toast("Error al importar: "+err.message)));
-$("#cfIn").onchange=e=>{const f=e.target.files[0];e.target.value="";f&&importCf(f).catch(err=>toast("Error al importar: "+err.message))};
-$("#ovIn").onchange=e=>{const f=e.target.files[0];e.target.value="";f&&importOverridesOnly(f).catch(err=>toast("Error al importar: "+err.message))};
-$("#jsonIn").onchange=e=>e.target.files[0]&&importJson(e.target.files[0]).catch(err=>toast("JSON inválido: "+err.message));
+dz("#drop",jars);dz("#dropCf",fs=>fs[0]&&importCf(fs[0]).catch(err=>toast("Import error: "+err.message)));
+$("#cfIn").onchange=e=>{const f=e.target.files[0];e.target.value="";f&&importCf(f).catch(err=>toast("Import error: "+err.message))};
+$("#ovIn").onchange=e=>{const f=e.target.files[0];e.target.value="";f&&importOverridesOnly(f).catch(err=>toast("Import error: "+err.message))};
+$("#jsonIn").onchange=e=>e.target.files[0]&&importJson(e.target.files[0]).catch(err=>toast("Invalid JSON: "+err.message));
 $("#expJson").onclick=exportJson;$("#expZip").onclick=exportZip;
 $("#filter").oninput=render;
 SET.forEach(f=>{const el=$("#"+f);el.addEventListener("input",refresh);el.addEventListener("change",refresh)});
 ["cfKey","cfBase"].forEach(f=>$("#"+f).addEventListener("change",save));
 $("#packSel").onchange=e=>switchPack(e.target.value);
-$("#packNew").onclick=()=>{const n=prompt("Nombre del nuevo modpack:","Nuevo modpack");if(n!==null)createPack(n.trim()||"Nuevo modpack")};
+$("#packNew").onclick=()=>{const n=prompt("Name of the new modpack:","New modpack");if(n!==null)createPack(n.trim()||"New modpack")};
 $("#packDup").onclick=duplicatePack;
 $("#packDel").onclick=deletePack;
 $("#chgApply").onclick=applyAll;
-$("#chgDiscard").onclick=()=>{if(changes.length&&confirm(`¿Descartar ${changes.length} cambios pendientes y volver al último estado aplicado?`))discardAll()};
+$("#chgDiscard").onclick=()=>{if(changes.length&&confirm(`Discard ${changes.length} pending changes and go back to the last applied state?`))discardAll()};
 $("#chgList").addEventListener("click",e=>{const b=e.target.closest("[data-rev]");if(!b)return;changes[+b.dataset.rev].revert();render()});
-$("#idNew").onclick=()=>{if(confirm("¿Generar un nuevo ID? Un lanzador que identifique el pack por su ID lo tratará como un modpack distinto.")){$("#pId").value=uid();refresh()}};
-$("#idCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("#pId").value);toast("ID copiado")}catch(e){$("#pId").select();toast("Copia el ID con Ctrl+C")}};
+$("#idNew").onclick=()=>{if(confirm("Generate a new ID? A launcher that identifies the pack by its ID will treat it as a different modpack.")){$("#pId").value=uid();refresh()}};
+$("#idCopy").onclick=async()=>{try{await navigator.clipboard.writeText($("#pId").value);toast("ID copied")}catch(e){$("#pId").select();toast("Copy the ID with Ctrl+C")}};
 $("#loader").addEventListener("change",()=>{$("#lver").value="";loadLoaderVersions()});
 $("#mc").addEventListener("change",loadLoaderVersions);
 $("#btnTheme").onclick=()=>{const r=document.documentElement,dark=r.dataset.theme?r.dataset.theme==="dark":matchMedia("(prefers-color-scheme:dark)").matches;r.dataset.theme=dark?"light":"dark"};
-$("#btnReset").onclick=()=>{if(confirm("¿Vaciar el borrador del modpack? Quedará como cambios pendientes y podrás descartarlos.")){mods=[];overrideFiles=[];overrideEntries.clear();FIELDS.filter(f=>!f.startsWith("cf")&&f!=="pId").forEach(f=>$("#"+f).value=f==="loader"?"fabric":"");render()}};
+$("#btnReset").onclick=()=>{if(confirm("Clear the modpack draft? It will show up as pending changes and you can discard them.")){mods=[];overrideFiles=[];overrideEntries.clear();FIELDS.filter(f=>!f.startsWith("cf")&&f!=="pId").forEach(f=>$("#"+f).value=f==="loader"?"fabric":"");render()}};
 
 const hadDraft=load();
 if(!$("#pId").value)$("#pId").value=uid();
