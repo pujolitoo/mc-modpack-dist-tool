@@ -16,12 +16,32 @@ pub enum Msg {
     Log(String),
     DeviceCode { uri: String, code: String },
     LoginDone(Result<String, String>),
+    /// Sign-in to the custom authentication server finished (profile name).
+    CustomLoginDone(Result<String, String>),
+    /// Sign-out of a custom account finished (profile name).
+    CustomLogoutDone(Result<String, String>),
+    /// Sign-out of the Microsoft account finished (username).
+    MsLogoutDone(Result<String, String>),
     PlayDone(Result<Option<i32>, String>),
     Refresh,
     /// Result of a server status query (`id` discards replies that are no longer current).
     ServerStatus { id: u64, result: Result<crate::server::Status, String> },
+    /// A skin upload or a name change finished.
+    ProfileChanged(Result<ProfileChange, String>),
+    /// Skin head of an account (`key` from skin::Who::key); `None` = no skin or not available.
+    SkinHead { key: String, head: Option<crate::server::Icon> },
     /// The launcher replaced itself; it must restart using this executable.
     SelfUpdated(std::path::PathBuf),
+}
+
+/// Result of changing the skin or the name of an account.
+pub struct ProfileChange {
+    /// Status text to show.
+    pub message: String,
+    /// Head to download again (skin::Who::key of the account before the change).
+    pub head_key: String,
+    /// Name change: (old name, new name).
+    pub renamed: Option<(String, String)>,
 }
 
 /// Sends messages to the UI and wakes it up for repainting.

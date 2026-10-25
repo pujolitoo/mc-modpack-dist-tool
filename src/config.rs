@@ -4,7 +4,8 @@
 use crate::util;
 
 // Generates: TITLE, MODPACK_URL, UPDATE_URL, LANGUAGE, MSA_APP_ID, MIN_RAM_MB, FORMAT, CF_API_KEY, CF_API_BASE,
-// SERVER_ADDRESS, SERVER_AUTO_JOIN, EMBEDDED_PACK and CLASSIC_ZLIB.
+// SERVER_ADDRESS, SERVER_AUTO_JOIN, AUTH_URL, AUTH_NAME, AUTH_ALLOW_MICROSOFT, AUTH_ALLOW_OFFLINE, AUTHLIB_INJECTOR,
+// EMBEDDED_PACK and CLASSIC_ZLIB.
 include!(concat!(env!("OUT_DIR"), "/build_config.rs"));
 
 /// Azure application ID for the PortableMC project (the same one used by its CLI).
@@ -106,6 +107,32 @@ pub fn server_address() -> &'static str {
 /// Whether auto-join starts enabled (until the player changes it).
 pub fn server_auto_join() -> bool {
     SERVER_AUTO_JOIN
+}
+
+/// Custom authentication server (Yggdrasil API root from `[auth] url`). `None` = disabled.
+pub fn auth_url() -> Option<&'static str> {
+    let u = AUTH_URL.trim();
+    if u.is_empty() { None } else { Some(u) }
+}
+
+/// Name of the custom account type shown in the launcher (`[auth] name`).
+pub fn auth_name() -> &'static str {
+    AUTH_NAME
+}
+
+/// Whether Microsoft accounts are offered (`[auth] allow_microsoft`).
+pub fn allow_microsoft() -> bool {
+    AUTH_ALLOW_MICROSOFT
+}
+
+/// Whether offline accounts are offered (`[auth] allow_offline`).
+pub fn allow_offline() -> bool {
+    AUTH_ALLOW_OFFLINE
+}
+
+/// authlib-injector jar embedded at build time (only when `[auth] url` is set).
+pub fn authlib_injector() -> Option<&'static [u8]> {
+    AUTHLIB_INJECTOR
 }
 
 /// Classic zlib (`libz.so.1`) embedded in Linux builds; `compat` uses it to work around zlib-ng.

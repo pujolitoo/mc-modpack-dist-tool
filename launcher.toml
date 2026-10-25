@@ -9,7 +9,7 @@
 
 [launcher]
 # Window title (optional).
-title = "Villazucar Launcher"
+title = "Test Launcher"
 
 # Default language of the launcher texts: the name of a file in the lang/ folder without ".json"
 # ("en" = English, "es" = Spanish, ...). Each player can switch it in the launcher; their choice is remembered.
@@ -81,6 +81,27 @@ address = "194.87.217.8:8927"
 
 # Whether "join automatically" starts enabled. Each player can still tick/untick it in the launcher.
 auto_join = true
+
+[auth]
+# Your own authentication server (Yggdrasil API, e.g. Drasl or Blessing Skin with its Yggdrasil plugin).
+# Players sign in with that server's username/email and password; the game is started with authlib-injector so
+# that Minecraft (and your server) authenticate against it. Empty = disabled.
+#   url = "https://auth.mydomain.com/api/yggdrasil/"
+# · https:// is required (http:// is only accepted for localhost, for testing).
+# · Your Minecraft server must also run authlib-injector with the same URL and online-mode=true:
+#     java -javaagent:authlib-injector.jar=https://auth.mydomain.com/api/yggdrasil/ -jar server.jar
+url = ""
+
+# Name of this account type in the launcher (e.g. the name of your community).
+name = "TestAccSrv"
+
+# Keep the other account types available too.
+allow_microsoft = true
+allow_offline = true
+
+# authlib-injector jar, EMBEDDED in the executable at build time (relative to this folder). Only needed when url is set.
+# Download authlib-injector-<version>.jar from https://github.com/yushijinhun/authlib-injector/releases
+authlib_injector = "assets/authlib-injector.jar"
 
 [microsoft]
 # Azure Application (client) ID for Microsoft sign-in.

@@ -1,9 +1,10 @@
 //! Integration with the `portablemc`: Microsoft sign-in, installation (with progress) and launching.
+//! Accounts of a custom authentication server are handled in yggdrasil.rs; here they are launched with authlib-injector.
 
 use crate::i18n::t;
 use crate::msg::{Msg, Reporter};
 use crate::pack::LoadedPack;
-use crate::util;
+use crate::{config, logxml, profile, util, yggdrasil};
 use anyhow::{anyhow, bail, Context, Result};
 use portablemc::{base, fabric, forge, moj, msa};
 use std::io::{BufRead, BufReader, Read};
@@ -13,6 +14,8 @@ use std::process::Stdio;
 pub enum AccountSel {
     Offline(String),
     Microsoft(String),
+    /// Profile name of an account of the custom authentication server (`[auth] url`).
+    Custom(String),
 }
 
 pub struct PlayParams {
@@ -28,6 +31,103 @@ pub struct PlayParams {
 enum Auth {
     Offline(String),
     Msa(msa::Account),
+    /// Custom server: the account, its profile UUID, the API root and the metadata (base64) for authlib-injector.
+    Custom { acc: yggdrasil::Account, uuid: uuid::Uuid, root: String, prefetched: String },
+}
+
+// ───────── custom authentication server ─────────
+
+/// Normalized `[auth] url`: identifies the saved accounts of this launcher's server.
+fn custom_server() -> Result<&'static str> {
+    config::auth_url().ok_or_else(|| anyhow!(t("yggdrasil.not_configured")))
+}
+
+/// Saved accounts of the custom server (profile names).
+pub fn list_custom_accounts() -> Vec<String> {
+    match config::auth_url() {
+        Some(url) => yggdrasil::list_accounts(&yggdrasil::db_path(), &yggdrasil::normalize_root(url)),
+        None => Vec::new(),
+    }
+}
+
+/// Signs in to the custom server with username/email and password and saves the session. Returns the profile name.
+/// The password is only sent to the server; it is never written to disk or to the log.
+pub fn login_custom(login: &str, password: &str, rep: &Reporter) -> Result<String> {
+    let url = custom_server()?;
+    rep.busy(t("yggdrasil.contacting_server"));
+    let meta = yggdrasil::fetch_metadata(url)?;
+    if let Some(name) = meta.server_name() {
+        rep.log(tf!("yggdrasil.server_is", name = name, root = meta.root));
+    }
+    rep.busy(t("yggdrasil.signing_in"));
+    let server = yggdrasil::normalize_root(url);
+    let acc = yggdrasil::authenticate(&meta.root, &server, login, password)?;
+    let db = yggdrasil::db_path();
+    // One account at a time: sign out (best effort) and forget any other saved one of this server.
+    for other in yggdrasil::list_accounts(&db, &server).into_iter().filter(|n| *n != acc.name) {
+        if let Some(old) = yggdrasil::load_account(&db, &server, &other) {
+            if old.uuid != acc.uuid {
+                yggdrasil::invalidate(&meta.root, &old);
+            }
+        }
+        let _ = yggdrasil::remove_account(&db, &server, &other);
+    }
+    yggdrasil::store_account(&db, &acc)?;
+    Ok(acc.name)
+}
+
+/// Signs out (on the server, best effort) and forgets the saved session.
+pub fn logout_custom(name: &str) -> Result<()> {
+    let url = custom_server()?;
+    let server = yggdrasil::normalize_root(url);
+    let db = yggdrasil::db_path();
+    if let Some(acc) = yggdrasil::load_account(&db, &server, name) {
+        if let Ok(meta) = yggdrasil::fetch_metadata(url) {
+            yggdrasil::invalidate(&meta.root, &acc);
+        }
+    }
+    yggdrasil::remove_account(&db, &server, name)
+}
+
+/// Writes the embedded authlib-injector to the launcher's data folder (only if missing or different).
+fn authlib_injector_path() -> Result<PathBuf> {
+    let bytes = config::authlib_injector().ok_or_else(|| anyhow!(t("yggdrasil.no_authlib_injector")))?;
+    let dir = util::app_data_dir().join("authlib-injector");
+    let file = dir.join("authlib-injector.jar");
+    if std::fs::read(&file).map(|b| b != bytes).unwrap_or(true) {
+        std::fs::create_dir_all(&dir)?;
+        let tmp = dir.join("authlib-injector.jar.part");
+        std::fs::write(&tmp, bytes)?;
+        std::fs::rename(&tmp, &file)?;
+    }
+    Ok(file)
+}
+
+/// Prepares a custom-server session for playing: metadata (or its cached copy) and a valid token.
+fn resolve_custom(name: &str, rep: &Reporter) -> Result<Auth> {
+    let url = custom_server()?;
+    let server = yggdrasil::normalize_root(url);
+    let db = yggdrasil::db_path();
+    let saved = yggdrasil::load_account(&db, &server, name)
+        .ok_or_else(|| anyhow!(tf!("yggdrasil.no_saved_session", name = name, server = config::auth_name())))?;
+    let (meta, cached) = yggdrasil::metadata_or_cached(url)?;
+    if cached {
+        rep.log(t("yggdrasil.using_cached_metadata"));
+    }
+    let acc = match yggdrasil::ensure_valid(&meta.root, &saved)? {
+        yggdrasil::Session::Valid(acc) => {
+            if acc != saved {
+                yggdrasil::store_account(&db, &acc)?;
+            }
+            acc
+        }
+        yggdrasil::Session::Unverified(reason) => {
+            rep.log(tf!("yggdrasil.session_unverified", reason = reason));
+            saved
+        }
+    };
+    let uuid = yggdrasil::parse_uuid(&acc.uuid)?;
+    Ok(Auth::Custom { acc, uuid, root: meta.root, prefetched: yggdrasil::base64(meta.json.as_bytes()) })
 }
 
 /// Microsoft accounts file (same format used by the PortableMC CLI).
@@ -51,6 +151,12 @@ fn auth_err(e: &msa::AuthError) -> String {
     }
 }
 
+/// UUID (without dashes) of a saved Microsoft account, to show its skin.
+pub fn ms_account_uuid(db_path: &Path, name: &str) -> Option<String> {
+    let acc = msa::Database::new(db_path.to_path_buf()).load_from_username(name).ok()??;
+    Some(acc.uuid().as_simple().to_string())
+}
+
 /// Sign-in using the device-code flow: the user enters a code in the browser.
 pub fn login(app_id: &str, db_path: &Path, rep: &Reporter) -> Result<String> {
     let auth = msa::Auth::new(app_id);
@@ -64,34 +170,100 @@ pub fn login(app_id: &str, db_path: &Path, rep: &Reporter) -> Result<String> {
 
     let account = flow.wait().map_err(|e| anyhow!(auth_err(&e)))?;
     let name = account.username().to_string();
-    msa::Database::new(db_path.to_path_buf())
-        .store(account)
-        .map_err(|e| anyhow!(tf!("game.could_not_save_account", error = e)))?;
+    let uuid = account.uuid();
+    let db = msa::Database::new(db_path.to_path_buf());
+    db.store(account).map_err(|e| anyhow!(tf!("game.could_not_save_account", error = e)))?;
+    // One Microsoft account at a time: forget any other saved one.
+    if let Ok(iter) = db.load_iter() {
+        let others: Vec<_> = iter.map(|a| a.uuid()).filter(|u| *u != uuid).collect();
+        for other in others {
+            let _ = db.remove_from_uuid(other);
+        }
+    }
     Ok(name)
 }
 
-fn resolve_auth(sel: &AccountSel, db_path: &Path) -> Result<Auth> {
+/// Forgets the saved Microsoft account.
+pub fn logout_ms(db_path: &Path, name: &str) -> Result<()> {
+    msa::Database::new(db_path.to_path_buf())
+        .remove_from_username(name)
+        .map_err(|e| anyhow!(tf!("game.could_not_save_account", error = e)))?;
+    Ok(())
+}
+
+fn resolve_auth(sel: &AccountSel, db_path: &Path, rep: &Reporter) -> Result<Auth> {
     match sel {
         AccountSel::Offline(name) => Ok(Auth::Offline(name.clone())),
-        AccountSel::Microsoft(name) => {
-            let db = msa::Database::new(db_path.to_path_buf());
-            let mut acc = db
-                .load_from_username(name)
-                .map_err(|e| anyhow!(tf!("game.accounts_database", error = e)))?
-                .ok_or_else(|| anyhow!(tf!("game.no_saved_session_for_click", name = name)))?;
-            // As in the CLI: validate the profile and refresh the token if it has expired.
-            match acc.request_profile() {
-                Ok(()) => {}
-                Err(msa::AuthError::OutdatedToken) => {
-                    acc.request_refresh()
-                        .map_err(|e| anyhow!(tf!("game.could_not_refresh_session", reason = auth_err(&e))))?;
-                }
-                Err(e) => bail!(tf!("game.could_not_validate_account", reason = auth_err(&e))),
-            }
-            db.store(acc.clone()).map_err(|e| anyhow!(tf!("game.could_not_save_account", error = e)))?;
-            Ok(Auth::Msa(acc))
-        }
+        AccountSel::Custom(name) => resolve_custom(name, rep),
+        AccountSel::Microsoft(name) => Ok(Auth::Msa(valid_ms_account(db_path, name)?)),
     }
+}
+
+/// Loads a saved Microsoft account with a valid token (refreshing it if it expired, as the PortableMC CLI does).
+fn valid_ms_account(db_path: &Path, name: &str) -> Result<msa::Account> {
+    let db = msa::Database::new(db_path.to_path_buf());
+    let mut acc = db
+        .load_from_username(name)
+        .map_err(|e| anyhow!(tf!("game.accounts_database", error = e)))?
+        .ok_or_else(|| anyhow!(tf!("game.no_saved_session_for_click", name = name)))?;
+    match acc.request_profile() {
+        Ok(()) => {}
+        Err(msa::AuthError::OutdatedToken) => {
+            acc.request_refresh()
+                .map_err(|e| anyhow!(tf!("game.could_not_refresh_session", reason = auth_err(&e))))?;
+        }
+        Err(e) => bail!(tf!("game.could_not_validate_account", reason = auth_err(&e))),
+    }
+    db.store(acc.clone()).map_err(|e| anyhow!(tf!("game.could_not_save_account", error = e)))?;
+    Ok(acc)
+}
+
+// ───────── skin and name changes ─────────
+
+/// Uploads a new skin for a Microsoft account (Mojang's services API).
+pub fn ms_upload_skin(db_path: &Path, name: &str, png: &[u8], model: profile::Model) -> Result<()> {
+    profile::check_skin(png, false)?;
+    let acc = valid_ms_account(db_path, name)?;
+    profile::services_upload_skin(profile::MOJANG_SERVICES, acc.access_token(), png, model)
+}
+
+/// Session of a custom-server account ready for an API call: (API root, account with a valid token).
+/// Unlike playing, this needs the server to be reachable.
+fn custom_session(name: &str) -> Result<(String, yggdrasil::Account)> {
+    let url = custom_server()?;
+    let db = yggdrasil::db_path();
+    let saved = yggdrasil::load_account(&db, &yggdrasil::normalize_root(url), name)
+        .ok_or_else(|| anyhow!(tf!("yggdrasil.no_saved_session", name = name, server = config::auth_name())))?;
+    let meta = yggdrasil::fetch_metadata(url)?;
+    let acc = match yggdrasil::ensure_valid(&meta.root, &saved)? {
+        yggdrasil::Session::Valid(acc) => acc,
+        yggdrasil::Session::Unverified(reason) => bail!(tf!("yggdrasil.could_not_contact", error = reason)),
+    };
+    if acc != saved {
+        yggdrasil::store_account(&db, &acc)?;
+    }
+    Ok((meta.root, acc))
+}
+
+/// Uploads a new skin for an account of the custom server (texture upload of the Yggdrasil specification).
+pub fn custom_upload_skin(name: &str, png: &[u8], model: profile::Model) -> Result<()> {
+    profile::check_skin(png, true)?;
+    let (root, acc) = custom_session(name)?;
+    profile::yggdrasil_upload_skin(&root, &acc.uuid, &acc.access_token, png, model)
+}
+
+/// Changes the player name of an account of the custom server. Returns the new name (the saved account is renamed).
+pub fn custom_change_name(name: &str, new_name: &str) -> Result<String> {
+    let new_name = new_name.trim();
+    if !profile::valid_player_name(new_name) {
+        bail!(t("profile.invalid_name"));
+    }
+    let (root, acc) = custom_session(name)?;
+    let reported = profile::services_change_name(&format!("{root}minecraftservices/"), &acc.access_token, new_name)?;
+    // A new token carries the new name; if refreshing fails, keep the old token with the reported name.
+    let updated = yggdrasil::refresh(&root, &acc).unwrap_or_else(|_| yggdrasil::Account { name: reported, ..acc.clone() });
+    yggdrasil::store_account(&yggdrasil::db_path(), &updated)?; // replaces the entry with the same UUID
+    Ok(updated.name)
 }
 
 /// Applies common settings to any installer (folders, account and auto-join).
@@ -109,6 +281,10 @@ fn configure(inst: &mut moj::Installer, install: &Path, auth: &Auth, join: Optio
         }
         Auth::Msa(acc) => {
             inst.set_auth_msa(acc);
+        }
+        // UUID and name as an offline session; the real token is put in the arguments after installing (see play).
+        Auth::Custom { acc, uuid, .. } => {
+            inst.set_auth_offline(*uuid, acc.name.clone());
         }
     }
 }
@@ -203,7 +379,7 @@ pub fn play(pack: &LoadedPack, params: &PlayParams, rep: &Reporter) -> Result<Op
     let lv = m.loader.version.trim().to_string();
 
     rep.busy(t("game.checking_account"));
-    let auth = resolve_auth(&params.account, &params.db_path)?;
+    let auth = resolve_auth(&params.account, &params.db_path, rep)?;
     let handler = ProgressHandler { rep: rep.clone() };
     rep.busy(t("game.preparing_minecraft"));
 
@@ -250,8 +426,31 @@ pub fn play(pack: &LoadedPack, params: &PlayParams, rep: &Reporter) -> Result<Op
         game.jvm_args.push(format!("-Xmx{ram}M"));
         rep.log(tf!("game.maximum_allocated_ram_mb", ram = ram));
     }
+    // Use the system proxy settings (as HMCL does): on networks/PCs with a proxy, direct connections from the game
+    // (and from authlib-injector) time out. Java never sends localhost / 127.* through the proxy.
+    if !game.jvm_args.iter().any(|a| a.starts_with("-Djava.net.useSystemProxies=") || a.starts_with("-Dhttp.proxy") || a.starts_with("-Dhttps.proxy") || a.starts_with("-DsocksProxy")) {
+        game.jvm_args.push("-Djava.net.useSystemProxies=true".to_string());
+    }
     if let Some((host, port)) = &params.join {
         rep.log(tf!("game.auto_join_game_will_connect", host = host, port = port));
+    }
+    // Custom authentication server: real token in the arguments + authlib-injector pointing to the server.
+    let mut secret = None;
+    if let Auth::Custom { acc, root, prefetched, .. } = &auth {
+        yggdrasil::patch_game_args(&mut game.game_args, acc);
+        let jar = authlib_injector_path()?;
+        game.jvm_args.insert(0, format!("-javaagent:{}={}", jar.display(), root));
+        game.jvm_args.insert(1, format!("-Dauthlibinjector.yggdrasil.prefetched={prefetched}"));
+        // Tell authlib-injector it runs in a client (as HMCL does): with Forge/NeoForge the main class is a bootstrap
+        // launcher, so authlib-injector cannot detect the side by itself.
+        game.jvm_args.insert(2, "-Dauthlibinjector.side=client".to_string());
+        // Diagnostics: MODPACK_LAUNCHER_AUTH_DEBUG=1 makes authlib-injector log every request it forwards (and where).
+        if std::env::var("MODPACK_LAUNCHER_AUTH_DEBUG").map(|v| !v.trim().is_empty() && v.trim() != "0").unwrap_or(false) {
+            game.jvm_args.insert(3, "-Dauthlibinjector.debug".to_string());
+            rep.log(t("yggdrasil.debug_enabled"));
+        }
+        rep.log(tf!("yggdrasil.launching_with", name = acc.name, root = root));
+        secret = Some(acc.access_token.clone());
     }
 
     let mut cmd = game.command();
@@ -273,7 +472,8 @@ pub fn play(pack: &LoadedPack, params: &PlayParams, rep: &Reporter) -> Result<Op
     .flatten()
     .map(|r| {
         let rep = rep.clone();
-        std::thread::spawn(move || pump(r, &rep))
+        let secret = secret.clone();
+        std::thread::spawn(move || pump(r, &rep, secret.as_deref()))
     })
     .collect();
 
@@ -284,20 +484,34 @@ pub fn play(pack: &LoadedPack, params: &PlayParams, rep: &Reporter) -> Result<Op
     Ok(status.code())
 }
 
-/// Forwards game output to the log (handles non-UTF-8 bytes).
-fn pump(reader: Box<dyn Read + Send>, rep: &Reporter) {
+/// Forwards game output to the log (handles non-UTF-8 bytes). The game's log4j XML events are turned into readable
+/// lines (see logxml.rs). `secret` (the access token) is masked if it appears.
+fn pump(reader: Box<dyn Read + Send>, rep: &Reporter, secret: Option<&str>) {
     let mut r = BufReader::new(reader);
     let mut buf = Vec::new();
+    let mut xml = logxml::Parser::default();
+    let emit = |text: String| {
+        let mut text = text.trim_end().to_string();
+        if let Some(s) = secret.filter(|s| s.len() >= 8) {
+            text = text.replace(s, "********");
+        }
+        if !text.trim().is_empty() {
+            rep.log(text);
+        }
+    };
     loop {
         buf.clear();
         match r.read_until(b'\n', &mut buf) {
             Ok(0) | Err(_) => break,
             Ok(_) => {
-                let line = String::from_utf8_lossy(&buf).trim_end().to_string();
-                if !line.is_empty() {
-                    rep.log(line);
+                let line = String::from_utf8_lossy(&buf);
+                if let Some(text) = xml.feed(line.trim_end_matches(['\r', '\n'])) {
+                    emit(text);
                 }
             }
         }
+    }
+    if let Some(rest) = xml.finish() {
+        emit(rest);
     }
 }

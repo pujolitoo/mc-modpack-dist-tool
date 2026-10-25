@@ -286,7 +286,7 @@ fn decode_favicon(uri: &str) -> Option<Icon> {
 }
 
 /// Standard base64 decoder (ignores line breaks, which some servers include).
-fn base64_decode(text: &str) -> Option<Vec<u8>> {
+pub(crate) fn base64_decode(text: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(text.len() * 3 / 4);
     let (mut acc, mut bits) = (0u32, 0u32);
     for c in text.bytes() {
@@ -311,7 +311,7 @@ fn base64_decode(text: &str) -> Option<Vec<u8>> {
 }
 
 /// PNG → RGBA8 (whatever the original colour type and bit depth).
-fn decode_png(bytes: &[u8]) -> Option<Icon> {
+pub(crate) fn decode_png(bytes: &[u8]) -> Option<Icon> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::normalize_to_color8());
     let mut reader = decoder.read_info().ok()?;

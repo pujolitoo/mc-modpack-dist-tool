@@ -2416,6 +2416,7 @@ dependencies = [
  "sysinfo",
  "toml",
  "ureq",
+ "uuid",
  "webbrowser",
  "zip 2.4.2",
 ]
