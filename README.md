@@ -14,6 +14,7 @@ Edit `launcher.toml`. All settings are embedded into the executable at build tim
   - `[requirements] min_ram_mb` → minimum system RAM; 0 = the amount recommended by the modpack.
   - `[launcher] language` → default language of the launcher texts: a file of `lang/` without `.json` (`en`, `es`...).
   - `[microsoft] app_id` → your own Azure app ID (optional).
+  - `[auth]` → your own authentication server (see below) and which account types are offered.
   - `[server] address` / `auto_join` → the modpack server (fixed in the executable) and whether
     "join automatically on PLAY" starts enabled (players can tick/untick it).
 
@@ -38,6 +39,30 @@ With `[server] address` set, the **Server** box (top right) shows the server ico
 names, when the server shares them), latency, version and MOTD; it refreshes every 30 seconds. With
 **Join automatically when clicking PLAY** enabled, PLAY starts Minecraft and joins that server directly (Quick Play on
 1.20+, `--server/--port` on older versions). Addresses without a port use 25565 or the domain's SRV record.
+
+## Custom authentication server
+Players can sign in with accounts of **your own authentication server** instead of (or besides) Microsoft accounts.
+Any server implementing the Yggdrasil API used by authlib-injector works, for example
+[Drasl](https://github.com/unmojang/drasl) or Blessing Skin with its Yggdrasil plugin.
+
+1. Host the server behind **HTTPS** and note its API root (e.g. `https://auth.mydomain.com/api/yggdrasil/`).
+   A root that announces the real API with the `X-Authlib-Injector-API-Location` header also works.
+2. Download the official `authlib-injector-<version>.jar` from
+   <https://github.com/yushijinhun/authlib-injector/releases> and save it as `assets/authlib-injector.jar`
+   (commit it, or let CI download it: the workflow fetches the pinned version when the file is missing).
+   It is **embedded in the executable** at build time; use the unaltered official jar (see `THIRD_PARTY_NOTICES.md`).
+3. In `launcher.toml`, set `[auth] url` to the API root, `name` to the name players will see, and choose whether
+   Microsoft/offline accounts stay available (`allow_microsoft`, `allow_offline`). Build again.
+4. **Your Minecraft server must authenticate against the same server**: start it (or your Velocity/BungeeCord proxy)
+   with `-javaagent:authlib-injector.jar=<the same URL>` and keep `online-mode=true`. Otherwise joining fails with
+   "Failed to verify username". Microsoft accounts can only join if your auth server falls back to Mojang (Drasl can).
+
+In the launcher, the account type appears with the configured name: players type their username/email and password,
+and the launcher saves only the session (access token, client token and profile) in `yggdrasil_accounts.json` in its
+data folder; the password is never stored. Before playing it validates the token and refreshes it if it expired; if the
+server cannot be reached, the game still starts with the saved session (single-player works). The game is launched
+with `-javaagent:authlib-injector.jar=<url>` and the server metadata pre-fetched (`-Dauthlibinjector.yggdrasil.prefetched`).
+`http://` URLs are rejected at build time, except for `localhost` (testing).
 
 ## Languages
 All launcher texts live in `lang/<code>.json` (`lang/en.json`, `lang/es.json`...), embedded in the executable at build

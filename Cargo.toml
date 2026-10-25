@@ -25,6 +25,7 @@ md-5 = "0.10"
 dirs = "6"
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }   # total system RAM
 png = "0.18"           # decodes the server icon (favicon) shown in the launcher
+uuid = "1"             # profile UUIDs of the custom authentication server (same crate portablemc uses)
 
 [build-dependencies]
 toml = "0.8"         # build.rs reads launcher.toml at build time

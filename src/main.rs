@@ -7,12 +7,16 @@ mod compat;
 mod config;
 mod external;
 mod game;
+mod logxml;
 mod msg;
 mod pack;
+mod profile;
 mod selfupdate;
 mod server;
+mod skin;
 mod sync;
 mod util;
+mod yggdrasil;
 
 use eframe::egui::{self, Color32, RichText};
 use i18n::t;
@@ -36,6 +40,12 @@ const SERVER_REFRESH: Duration = Duration::from_secs(30);
 const SERVER_BOX_W: f32 = 300.0;
 /// Size of the server icon in the box (Minecraft icons are 64×64).
 const SERVER_ICON: f32 = 56.0;
+/// Size of the skin head in the account box.
+const HEAD_SIZE: f32 = 56.0;
+/// Size of the skin head next to the account name (main screen, top right).
+const CHIP_HEAD: f32 = 40.0;
+/// Width of the sign-in card.
+const LOGIN_W: f32 = 560.0;
 
 fn main() -> eframe::Result<()> {
     compat::ensure_classic_zlib(); // Linux: must run before any thread exists (it may restart the process)
@@ -78,6 +88,8 @@ struct Settings {
     mode: String,
     offline_name: String,
     ms_account: String,
+    /// Selected account of the custom authentication server (profile name).
+    custom_account: String,
     /// Custom maximum RAM in MB (empty = modpack-recommended amount).
     ram_mb: String,
     /// Client-side-only mods removed by the player, per modpack (pack ID → mod keys).
@@ -112,6 +124,36 @@ impl Settings {
 enum Mode {
     Microsoft,
     Offline,
+    /// Account of the custom authentication server (`[auth] url`).
+    Custom,
+}
+
+impl Mode {
+    fn allowed(self) -> bool {
+        match self {
+            Mode::Microsoft => config::allow_microsoft(),
+            Mode::Offline => config::allow_offline(),
+            Mode::Custom => config::auth_url().is_some(),
+        }
+    }
+
+    fn code(self) -> &'static str {
+        match self {
+            Mode::Microsoft => "microsoft",
+            Mode::Offline => "offline",
+            Mode::Custom => "custom",
+        }
+    }
+
+    /// The saved mode if it is still offered by this build; otherwise the first one that is
+    /// (custom server first: if the launcher has one, it is the intended way to play).
+    fn from_settings(code: &str) -> Mode {
+        let saved = [Mode::Microsoft, Mode::Offline, Mode::Custom].into_iter().find(|m| m.code() == code);
+        saved
+            .filter(|m| m.allowed())
+            .or_else(|| [Mode::Custom, Mode::Microsoft, Mode::Offline].into_iter().find(|m| m.allowed()))
+            .unwrap_or(Mode::Offline)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -122,6 +164,13 @@ enum Busy {
     Playing,
     /// Checking for modpack updates.
     Checking,
+}
+
+/// Screen shown: first the sign-in, then the main screen.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Screen {
+    Login,
+    Main,
 }
 
 /// Last known state of the server.
@@ -161,11 +210,26 @@ struct Row {
     lock_note: Option<String>,
 }
 
+/// "Change skin" dialog.
+struct SkinDialog {
+    path: Option<PathBuf>,
+    model: profile::Model,
+}
+
 enum Action {
     Play,
     PlayAnyway,
     CancelRam,
     Login,
+    CustomLogin,
+    CustomLogout,
+    MsLogout,
+    /// Back to the sign-in screen (offline account).
+    SignInScreen,
+    UploadSkin,
+    ChangeName,
+    /// Sign-in screen → main screen.
+    Continue,
     Reload,
     CheckUpdate,
 }
@@ -187,9 +251,26 @@ struct App {
     ram_text: String,
     /// Total physical system RAM in MB (read once).
     sys_ram_mb: Option<u64>,
-    accounts: Vec<String>,
+    /// Microsoft account (one at a time; empty = not signed in).
     selected_account: String,
     device_code: Option<(String, String)>,
+    /// Custom authentication server: the account (one at a time; empty = not signed in) and the sign-in form.
+    selected_custom: String,
+    custom_login: String,
+    /// Only kept in memory until sign-in is sent; it is cleared right after.
+    custom_password: String,
+    /// Skin heads already loaded (key = skin::Who::key; `None` = the account has no skin / it is not available).
+    heads: HashMap<String, Option<egui::TextureHandle>>,
+    /// Heads being downloaded.
+    heads_pending: HashSet<String>,
+    /// Open dialogs to change the skin / the player name (the latter holds the typed name).
+    skin_dialog: Option<SkinDialog>,
+    name_dialog: Option<String>,
+
+    /// Sign-in screen or main screen.
+    screen: Screen,
+    /// The account settings window is open.
+    account_open: bool,
 
     busy: Busy,
     status: String,
@@ -326,7 +407,13 @@ impl App {
         let settings = Settings::load();
         let db_path = game::accounts_db_path();
         let accounts = game::list_accounts(&db_path);
-        let mode = if settings.mode == "microsoft" { Mode::Microsoft } else { Mode::Offline };
+        let mode = Mode::from_settings(&settings.mode);
+        let custom_accounts = game::list_custom_accounts();
+        let selected_custom = if custom_accounts.contains(&settings.custom_account) {
+            settings.custom_account.clone()
+        } else {
+            custom_accounts.first().cloned().unwrap_or_default()
+        };
         let selected_account = if accounts.contains(&settings.ms_account) {
             settings.ms_account.clone()
         } else {
@@ -359,9 +446,17 @@ impl App {
             pack_error: None,
             rows: Vec::new(),
             mode,
-            accounts,
             selected_account,
             device_code: None,
+            selected_custom,
+            custom_login: String::new(),
+            custom_password: String::new(),
+            heads: HashMap::new(),
+            heads_pending: HashSet::new(),
+            skin_dialog: None,
+            name_dialog: None,
+            screen: Screen::Login,
+            account_open: false,
             busy: Busy::Idle,
             status: t("main.ready").to_string(),
             status_error: false,
@@ -373,9 +468,38 @@ impl App {
         if std::env::var_os(compat::PRELOADED_MARKER).is_some() {
             app.push_log(t("main.linux_zlib_ng_detected_running").to_string());
         }
+        // With an account already saved (signed in before), straight to the main screen.
+        if app.account_ok() {
+            app.screen = Screen::Main;
+        }
         app.load_pack(&cc.egui_ctx);
         app.start_server_query(&cc.egui_ctx);
         app
+    }
+
+    /// The selected account can be used to play (signed in, or a valid offline name).
+    fn account_ok(&self) -> bool {
+        match self.mode {
+            Mode::Offline => valid_offline_name(self.offline_name.trim()),
+            Mode::Microsoft => !self.selected_account.is_empty(),
+            Mode::Custom => !self.selected_custom.is_empty(),
+        }
+    }
+
+    /// (player name, kind of account) of the selected account.
+    fn account_label(&self) -> (String, String) {
+        let name = match self.mode {
+            Mode::Microsoft => self.selected_account.as_str(),
+            Mode::Custom => self.selected_custom.as_str(),
+            Mode::Offline => self.offline_name.trim(),
+        };
+        let name = if name.is_empty() { t("main.not_signed").to_string() } else { name.to_string() };
+        let kind = match self.mode {
+            Mode::Custom => config::auth_name().to_string(),
+            Mode::Microsoft => "Microsoft".to_string(),
+            Mode::Offline => t("main.offline_account").to_string(),
+        };
+        (name, kind)
     }
 
     fn reporter(&self, ctx: &egui::Context) -> Reporter {
@@ -437,7 +561,8 @@ impl App {
 
     fn save_settings(&mut self) {
         self.settings.install_dir = self.install_dir.clone();
-        self.settings.mode = if self.mode == Mode::Microsoft { "microsoft" } else { "offline" }.to_string();
+        self.settings.mode = self.mode.code().to_string();
+        self.settings.custom_account = self.selected_custom.clone();
         self.settings.offline_name = self.offline_name.clone();
         self.settings.ms_account = self.selected_account.clone();
         self.settings.ram_mb = self.ram_text.trim().to_string();
@@ -646,6 +771,478 @@ impl App {
         });
     }
 
+    /// Account whose skin head should be shown (none for offline accounts).
+    fn current_who(&self) -> Option<skin::Who> {
+        match self.mode {
+            Mode::Microsoft if !self.selected_account.is_empty() => Some(skin::Who::Microsoft(self.selected_account.clone())),
+            Mode::Custom if !self.selected_custom.is_empty() => Some(skin::Who::Custom(self.selected_custom.clone())),
+            _ => None,
+        }
+    }
+
+    /// Downloads the head of the current account in the background, if it is not loaded yet.
+    fn request_head(&mut self, ctx: &egui::Context) {
+        let Some(who) = self.current_who() else { return };
+        let key = who.key();
+        if self.heads.contains_key(&key) || !self.heads_pending.insert(key.clone()) {
+            return;
+        }
+        let rep = self.reporter(ctx);
+        std::thread::spawn(move || {
+            let head = skin::head(&who);
+            rep.send(Msg::SkinHead { key, head });
+        });
+    }
+
+    /// Head of the current account (pixelated, like in the game) or, without a skin, a box with the initial.
+    fn draw_head(&self, ui: &mut egui::Ui, side: f32) {
+        let size = egui::vec2(side, side);
+        let who = self.current_who();
+        let texture = who.as_ref().and_then(|w| self.heads.get(&w.key()).cloned().flatten());
+        if let Some(tex) = texture {
+            ui.add(egui::Image::from_texture(&tex).fit_to_exact_size(size).corner_radius(4.0));
+            return;
+        }
+        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+        ui.painter().rect_filled(rect, 4.0, ui.visuals().widgets.inactive.bg_fill);
+        if who.as_ref().is_some_and(|w| self.heads_pending.contains(&w.key())) {
+            ui.put(rect, egui::Spinner::new());
+            return;
+        }
+        let name = match self.mode {
+            Mode::Microsoft => &self.selected_account,
+            Mode::Custom => &self.selected_custom,
+            Mode::Offline => &self.offline_name,
+        };
+        let initial = name.trim().chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "?".to_string());
+        ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, initial, egui::FontId::proportional(side * 0.46), MUTE);
+    }
+
+    /// Signs in to the custom authentication server in the background.
+    fn start_custom_login(&mut self, ctx: &egui::Context) {
+        let login = self.custom_login.trim().to_string();
+        let password = std::mem::take(&mut self.custom_password);
+        if login.is_empty() || password.is_empty() {
+            return self.fail(t("yggdrasil.enter_credentials").to_string());
+        }
+        self.busy = Busy::LoggingIn;
+        self.status = tf!("yggdrasil.signing_in_to", server = config::auth_name());
+        self.status_error = false;
+        self.progress = Progress::Spinner(t("yggdrasil.signing_in").to_string());
+        let rep = self.reporter(ctx);
+        std::thread::spawn(move || {
+            let r = game::login_custom(&login, &password, &rep).map_err(|e| format!("{e:#}"));
+            drop(password);
+            rep.send(Msg::CustomLoginDone(r));
+        });
+    }
+
+    /// Signs out the selected custom account.
+    /// Uploads the skin chosen in the dialog for the selected account (Microsoft or custom server).
+    fn start_skin_upload(&mut self, ctx: &egui::Context) {
+        let Some(dialog) = self.skin_dialog.take() else { return };
+        let Some(path) = dialog.path else { return };
+        let png = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(e) => return self.fail(tf!("profile.could_not_read_file", error = e)),
+        };
+        let Some(who) = self.current_who() else { return };
+        self.busy = Busy::LoggingIn;
+        self.status_error = false;
+        self.progress = Progress::Spinner(t("profile.uploading_skin").to_string());
+        let rep = self.reporter(ctx);
+        let db_path = self.db_path.clone();
+        std::thread::spawn(move || {
+            let r = match &who {
+                skin::Who::Microsoft(name) => game::ms_upload_skin(&db_path, name, &png, dialog.model),
+                skin::Who::Custom(name) => game::custom_upload_skin(name, &png, dialog.model),
+            };
+            let result = r
+                .map(|_| msg::ProfileChange { message: t("profile.skin_changed").to_string(), head_key: who.key(), renamed: None })
+                .map_err(|e| format!("{e:#}"));
+            rep.send(Msg::ProfileChanged(result));
+        });
+    }
+
+    /// Changes the player name of the selected account of the custom server.
+    fn start_rename(&mut self, ctx: &egui::Context) {
+        let Some(new_name) = self.name_dialog.take() else { return };
+        let old = self.selected_custom.clone();
+        if old.is_empty() {
+            return;
+        }
+        self.busy = Busy::LoggingIn;
+        self.status_error = false;
+        self.progress = Progress::Spinner(t("profile.changing_name").to_string());
+        let rep = self.reporter(ctx);
+        std::thread::spawn(move || {
+            let result = game::custom_change_name(&old, &new_name)
+                .map(|new| msg::ProfileChange {
+                    message: tf!("profile.name_changed", name = new),
+                    head_key: skin::Who::Custom(old.clone()).key(),
+                    renamed: Some((old.clone(), new)),
+                })
+                .map_err(|e| format!("{e:#}"));
+            rep.send(Msg::ProfileChanged(result));
+        });
+    }
+
+    /// Signs out the Microsoft account (forgets the saved session).
+    fn start_ms_logout(&mut self, ctx: &egui::Context) {
+        let name = self.selected_account.clone();
+        if name.is_empty() {
+            return;
+        }
+        self.busy = Busy::LoggingIn;
+        self.progress = Progress::Spinner(t("yggdrasil.signing_out").to_string());
+        let rep = self.reporter(ctx);
+        let db_path = self.db_path.clone();
+        std::thread::spawn(move || {
+            let r = game::logout_ms(&db_path, &name).map(|_| name).map_err(|e| format!("{e:#}"));
+            rep.send(Msg::MsLogoutDone(r));
+        });
+    }
+
+    fn start_custom_logout(&mut self, ctx: &egui::Context) {
+        let name = self.selected_custom.clone();
+        if name.is_empty() {
+            return;
+        }
+        self.busy = Busy::LoggingIn;
+        self.progress = Progress::Spinner(t("yggdrasil.signing_out").to_string());
+        let rep = self.reporter(ctx);
+        std::thread::spawn(move || {
+            let r = game::logout_custom(&name).map(|_| name).map_err(|e| format!("{e:#}"));
+            rep.send(Msg::CustomLogoutDone(r));
+        });
+    }
+
+    /// The sign-in form of the custom server is shown (custom server selected, not signed in yet).
+    fn custom_form_shown(&self) -> bool {
+        self.mode == Mode::Custom && self.selected_custom.is_empty()
+    }
+
+    /// The sign-in form of the custom server is filled in.
+    fn custom_form_ready(&self) -> bool {
+        !self.custom_login.trim().is_empty() && !self.custom_password.is_empty()
+    }
+
+    /// Account controls of the sign-in screen: kind of account and the sign-in for it.
+    fn account_controls(&mut self, ui: &mut egui::Ui, idle: bool) -> Option<Action> {
+        let mut action = None;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(t("main.account")).strong());
+            ui.add_enabled_ui(idle, |ui| {
+                if Mode::Custom.allowed() {
+                    ui.radio_value(&mut self.mode, Mode::Custom, config::auth_name());
+                }
+                if Mode::Microsoft.allowed() {
+                    ui.radio_value(&mut self.mode, Mode::Microsoft, "Microsoft");
+                }
+                if Mode::Offline.allowed() {
+                    ui.radio_value(&mut self.mode, Mode::Offline, "Offline");
+                }
+            });
+        });
+        ui.add_enabled_ui(idle || self.busy == Busy::LoggingIn, |ui| {
+            ui.horizontal(|ui| match self.mode {
+                Mode::Microsoft => {
+                    // Signed in → its name (CONTINUE below); otherwise the sign-in button.
+                    if self.selected_account.is_empty() {
+                        if ui.add_enabled(idle, egui::Button::new(t("main.sign_with_microsoft"))).clicked() {
+                            action = Some(Action::Login);
+                        }
+                    } else {
+                        ui.label(RichText::new(self.selected_account.as_str()).strong());
+                    }
+                }
+                Mode::Offline => {
+                    ui.label(t("main.player_name"));
+                    ui.add_enabled(
+                        idle,
+                        egui::TextEdit::singleline(&mut self.offline_name).desired_width(220.0).hint_text("Steve"),
+                    );
+                }
+                Mode::Custom => {
+                    // Signed in → its name (CONTINUE below); otherwise the form below.
+                    if !self.selected_custom.is_empty() {
+                        ui.label(RichText::new(self.selected_custom.as_str()).strong());
+                    }
+                }
+            });
+            // Sign-in form of the custom server: username/email, and the password below it
+            // (the big button of the sign-in screen sends it; Enter in the password field too).
+            if self.custom_form_shown() {
+                ui.label(t("yggdrasil.username"));
+                ui.add_enabled(idle, egui::TextEdit::singleline(&mut self.custom_login).desired_width(f32::INFINITY));
+                ui.label(t("yggdrasil.password"));
+                let pw = ui.add_enabled(
+                    idle,
+                    egui::TextEdit::singleline(&mut self.custom_password).password(true).desired_width(f32::INFINITY),
+                );
+                if pw.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && self.custom_form_ready() {
+                    action = Some(Action::CustomLogin);
+                }
+            }
+        });
+        // Microsoft sign-in code (device-code flow), shown while signing in.
+        if let Some((uri, code)) = &self.device_code {
+            ui.group(|ui| {
+                ui.label(t("main.open_this_page_and_enter"));
+                ui.hyperlink(uri.as_str());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(code.as_str()).monospace().size(22.0).strong());
+                    if ui.button(t("main.copy_code")).clicked() {
+                        ui.ctx().copy_text(code.clone());
+                    }
+                });
+            });
+        }
+        action
+    }
+
+    /// Status message and progress (bar or spinner).
+    fn status_progress(&self, ui: &mut egui::Ui) {
+        if self.status_error {
+            ui.colored_label(BAD, self.status.as_str());
+        } else {
+            ui.colored_label(MUTE, self.status.as_str());
+        }
+        match &self.progress {
+            Progress::Fraction(f, text) => {
+                ui.add(egui::ProgressBar::new(*f).text(text.as_str()));
+            }
+            Progress::Spinner(text) => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(text.as_str());
+                });
+            }
+            Progress::None => {}
+        }
+    }
+
+    /// Language selector. Returns the newly chosen language, if any.
+    fn language_combo(&self, ui: &mut egui::Ui) -> Option<&'static str> {
+        let mut new_lang = None;
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let cur = i18n::current();
+            egui::ComboBox::from_id_salt("language").width(120.0).selected_text(cur.name.as_str()).show_ui(ui, |ui| {
+                for l in i18n::languages() {
+                    if ui.selectable_label(cur.code == l.code, l.name.as_str()).clicked() && cur.code != l.code {
+                        new_lang = Some(l.code);
+                    }
+                }
+            });
+            ui.label(RichText::new(t("main.language")).small().color(MUTE));
+        });
+        new_lang
+    }
+
+    /// Sign-in screen (shown first): a card with the account controls and CONTINUE.
+    fn login_screen(&mut self, ctx: &egui::Context, idle: bool) -> (Option<Action>, Option<&'static str>) {
+        let (mut action, mut lang) = (None, None);
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| lang = self.language_combo(ui));
+            ui.vertical_centered(|ui| {
+                ui.add_space((ui.available_height() * 0.10).clamp(8.0, 80.0));
+                ui.label(RichText::new(config::title()).size(28.0).strong());
+                ui.label(RichText::new(t("main.sign_in_subtitle")).color(MUTE));
+            });
+            ui.add_space(12.0);
+            let w = LOGIN_W.min(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.add_space(((ui.available_width() - w) / 2.0).max(0.0));
+                ui.vertical(|ui| {
+                    ui.set_width(w);
+                    egui::Frame::group(ui.style()).fill(ui.visuals().extreme_bg_color).inner_margin(16.0).show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.spacing_mut().item_spacing.y = 6.0;
+                        ui.label(RichText::new(t("main.sign_in_title")).size(18.0).strong());
+                        ui.add_space(4.0);
+                        ui.horizontal_top(|ui| {
+                            self.draw_head(ui, HEAD_SIZE);
+                            ui.vertical(|ui| {
+                                if let Some(a) = self.account_controls(ui, idle) {
+                                    action = Some(a);
+                                }
+                            });
+                        });
+                        ui.add_space(6.0);
+                        // Custom server not signed in yet: the big button signs in; otherwise it continues.
+                        let (label, enabled, act) = if self.custom_form_shown() {
+                            (t("yggdrasil.sign_in"), self.custom_form_ready(), Action::CustomLogin)
+                        } else {
+                            (t("main.continue"), self.account_ok(), Action::Continue)
+                        };
+                        let go = egui::Button::new(RichText::new(label).size(18.0).strong().color(ACCENT_TEXT))
+                            .fill(ACCENT)
+                            .min_size(egui::vec2(ui.available_width(), 40.0));
+                        if ui.add_enabled(idle && enabled, go).clicked() {
+                            action = Some(act);
+                        }
+                    });
+                    ui.add_space(8.0);
+                    self.status_progress(ui);
+                });
+            });
+        });
+        (action, lang)
+    }
+
+    /// Contents of the account settings window. Returns (action, close requested).
+    fn account_settings_ui(&mut self, ui: &mut egui::Ui, idle: bool) -> (Option<Action>, bool) {
+        let action = None;
+        let mut close = false;
+        ui.spacing_mut().item_spacing.y = 6.0;
+        let (name, kind) = self.account_label();
+        ui.horizontal(|ui| {
+            self.draw_head(ui, 72.0);
+            ui.vertical(|ui| {
+                ui.label(RichText::new(name).size(20.0).strong());
+                ui.label(RichText::new(kind).color(MUTE));
+            });
+        });
+        ui.separator();
+        // Skin (Microsoft and custom server) and name (custom server only).
+        if self.current_who().is_some() {
+            ui.horizontal(|ui| {
+                if ui.add_enabled(idle, egui::Button::new(t("profile.change_skin"))).clicked() {
+                    self.skin_dialog = Some(SkinDialog { path: None, model: profile::Model::Classic });
+                }
+                if self.mode == Mode::Custom && ui.add_enabled(idle, egui::Button::new(t("profile.change_name"))).clicked() {
+                    self.name_dialog = Some(self.selected_custom.clone());
+                }
+            });
+        } else {
+            ui.label(RichText::new(t("main.offline_no_settings")).color(MUTE));
+        }
+        ui.add_space(8.0);
+        self.status_progress(ui);
+        ui.add_space(4.0);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button(t("main.close")).clicked() {
+                close = true;
+            }
+        });
+        (action, close)
+    }
+
+    /// Account settings, as a modal window inside the launcher (the rest of the interface is blocked meanwhile).
+    fn account_window(&mut self, ctx: &egui::Context, idle: bool) -> Option<Action> {
+        let mut action = None;
+        let mut close = false;
+        let width = 560.0_f32.min(ctx.screen_rect().width() - 48.0);
+        let resp = egui::Modal::new(egui::Id::new("account_settings")).show(ctx, |ui| {
+            ui.set_width(width);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(t("main.account_settings")).size(18.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("✖").on_hover_text(t("main.close")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+            ui.separator();
+            let (a, c) = self.account_settings_ui(ui, idle);
+            action = a;
+            close |= c;
+        });
+        // Escape or a click outside also close it (not while something is in progress or a dialog is open over it).
+        if resp.should_close() && self.busy == Busy::Idle && self.skin_dialog.is_none() && self.name_dialog.is_none() {
+            close = true;
+        }
+        if close {
+            self.account_open = false;
+            self.save_settings();
+        }
+        action
+    }
+
+    /// "Change skin" and "Change name" dialogs. Returns the action chosen in them.
+    fn profile_dialogs(&mut self, ctx: &egui::Context) -> Option<Action> {
+        let mut action = None;
+        // ── "Change skin" dialog ──
+        let busy_idle = self.busy == Busy::Idle;
+        let mut close_skin = false;
+        if let Some(dialog) = &mut self.skin_dialog {
+            let resp = egui::Modal::new(egui::Id::new("skin_dialog")).show(ctx, |ui| {
+                    ui.set_max_width(420.0);
+                    ui.label(RichText::new(t("profile.change_skin_title")).size(18.0).strong());
+                    ui.horizontal(|ui| {
+                        if ui.button(t("profile.choose_file")).clicked() {
+                            if let Some(p) = rfd::FileDialog::new().add_filter("PNG", &["png"]).pick_file() {
+                                dialog.path = Some(p);
+                            }
+                        }
+                        let shown = dialog
+                            .path
+                            .as_ref()
+                            .and_then(|p| p.file_name())
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| t("profile.no_file").to_string());
+                        ui.label(RichText::new(shown).color(MUTE));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(t("profile.model"));
+                        ui.radio_value(&mut dialog.model, profile::Model::Classic, t("profile.model_classic"));
+                        ui.radio_value(&mut dialog.model, profile::Model::Slim, t("profile.model_slim"));
+                    });
+                    ui.label(RichText::new(t("profile.skin_hint")).small().color(MUTE));
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(t("main.cancel")).clicked() {
+                            close_skin = true;
+                        }
+                        if ui.add_enabled(busy_idle && dialog.path.is_some(), egui::Button::new(t("profile.upload"))).clicked() {
+                            action = Some(Action::UploadSkin);
+                        }
+                    });
+                });
+            if resp.should_close() {
+                close_skin = true;
+            }
+        }
+        if close_skin {
+            self.skin_dialog = None;
+        }
+
+        // ── "Change name" dialog (custom server) ──
+        let mut close_name = false;
+        if let Some(new_name) = &mut self.name_dialog {
+            let resp = egui::Modal::new(egui::Id::new("name_dialog")).show(ctx, |ui| {
+                    ui.set_max_width(420.0);
+                    ui.label(RichText::new(t("profile.change_name_title")).size(18.0).strong());
+                    let r = ui.add(egui::TextEdit::singleline(new_name).desired_width(220.0).hint_text("Steve"));
+                    let valid = profile::valid_player_name(new_name.trim());
+                    let changed = new_name.trim() != self.selected_custom;
+                    if !valid && !new_name.trim().is_empty() {
+                        ui.colored_label(BAD, t("profile.invalid_name"));
+                    } else {
+                        ui.label(RichText::new(t("profile.name_hint")).small().color(MUTE));
+                    }
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(t("main.cancel")).clicked() {
+                            close_name = true;
+                        }
+                        let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                        let ok = busy_idle && valid && changed;
+                        if (ui.add_enabled(ok, egui::Button::new(t("profile.rename"))).clicked() || enter) && ok {
+                            action = Some(Action::ChangeName);
+                        }
+                    });
+                });
+            if resp.should_close() {
+                close_name = true;
+            }
+        }
+        if close_name {
+            self.name_dialog = None;
+        }
+        action
+    }
+
     fn start_play(&mut self, ctx: &egui::Context, skip_ram_check: bool) {
         let Some(pack) = self.pack.clone() else { return };
         let install = self.install_dir.trim().to_string();
@@ -664,6 +1261,12 @@ impl App {
                     return self.fail(t("main.sign_with_microsoft_before_playing").to_string());
                 }
                 game::AccountSel::Microsoft(self.selected_account.clone())
+            }
+            Mode::Custom => {
+                if self.selected_custom.is_empty() {
+                    return self.fail(tf!("yggdrasil.sign_in_before_playing", server = config::auth_name()));
+                }
+                game::AccountSel::Custom(self.selected_custom.clone())
             }
         };
         let ram_mb = match parse_ram(&self.ram_text, self.sys_ram_mb) {
@@ -737,7 +1340,7 @@ impl App {
                     self.status = t("main.authorize_access_browser_using_displayed").to_string();
                 }
                 Msg::LoginDone(Ok(name)) => {
-                    self.accounts = game::list_accounts(&self.db_path);
+                    self.heads.remove(&skin::Who::Microsoft(name.clone()).key());
                     self.selected_account = name.clone();
                     self.device_code = None;
                     self.busy = Busy::Idle;
@@ -745,7 +1348,38 @@ impl App {
                     self.status = tf!("main.signed_as", name = name);
                     self.status_error = false;
                     self.save_settings();
+                    self.screen = Screen::Main;
                 }
+                Msg::CustomLoginDone(Ok(name)) => {
+                    self.heads.remove(&skin::Who::Custom(name.clone()).key());
+                    self.selected_custom = name.clone();
+                    self.busy = Busy::Idle;
+                    self.progress = Progress::None;
+                    self.status = tf!("main.signed_as", name = name);
+                    self.status_error = false;
+                    self.save_settings();
+                    self.screen = Screen::Main;
+                }
+                Msg::CustomLoginDone(Err(e)) => self.fail(e),
+                Msg::CustomLogoutDone(Ok(name)) => {
+                    self.selected_custom = String::new();
+                    self.busy = Busy::Idle;
+                    self.progress = Progress::None;
+                    self.status = tf!("yggdrasil.signed_out", name = name);
+                    self.status_error = false;
+                    self.save_settings();
+                }
+                Msg::CustomLogoutDone(Err(e)) => self.fail(e),
+                Msg::MsLogoutDone(Ok(name)) => {
+                    self.heads.remove(&skin::Who::Microsoft(name.clone()).key());
+                    self.selected_account = String::new();
+                    self.busy = Busy::Idle;
+                    self.progress = Progress::None;
+                    self.status = tf!("yggdrasil.signed_out", name = name);
+                    self.status_error = false;
+                    self.save_settings();
+                }
+                Msg::MsLogoutDone(Err(e)) => self.fail(e),
                 Msg::LoginDone(Err(e)) => {
                     self.device_code = None;
                     self.fail(e);
@@ -815,6 +1449,26 @@ impl App {
                     selfupdate::restart(&exe);
                 }
                 Msg::Refresh => self.refresh_rows(),
+                Msg::ProfileChanged(Ok(change)) => {
+                    self.busy = Busy::Idle;
+                    self.progress = Progress::None;
+                    self.status = change.message;
+                    self.status_error = false;
+                    self.heads.remove(&change.head_key); // download the new skin / the renamed account's skin
+                    if let Some((_, new)) = change.renamed {
+                        self.selected_custom = new;
+                        self.save_settings();
+                    }
+                }
+                Msg::ProfileChanged(Err(e)) => self.fail(e),
+                Msg::SkinHead { key, head } => {
+                    self.heads_pending.remove(&key);
+                    let texture = head.map(|h| {
+                        let image = egui::ColorImage::from_rgba_unmultiplied([h.width, h.height], &h.rgba);
+                        ctx.load_texture(format!("head-{key}"), image, egui::TextureOptions::NEAREST)
+                    });
+                    self.heads.insert(key, texture);
+                }
                 Msg::ServerStatus { id, result } => {
                     if id == self.server_query_id {
                         self.server_checking = false;
@@ -850,7 +1504,8 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain(ctx);
-        let idle = self.busy == Busy::Idle && self.ram_prompt.is_none();
+        self.request_head(ctx);
+        let idle = self.busy == Busy::Idle && self.ram_prompt.is_none() && self.skin_dialog.is_none() && self.name_dialog.is_none();
         let mut action: Option<Action> = None;
         let mut rows_dirty = false;
         let mut toggle: Option<String> = None;
@@ -868,318 +1523,291 @@ impl eframe::App for App {
             }
         }
 
-        // ── Header + installation location ──
-        egui::TopBottomPanel::top("top").show(ctx, |ui| {
-            ui.add_space(8.0);
-            let has_server = !config::server_address().is_empty();
-            // Right column (always present): language selector and, below it, the server box.
-            let left_w = (ui.available_width() - SERVER_BOX_W - 12.0).max(240.0);
-            ui.horizontal_top(|ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(left_w);
-                    match &self.pack {
-                        Some(p) => {
-                            ui.label(RichText::new(format!("{} {}", p.display_name(), p.version())).size(24.0).strong());
-                            ui.label(RichText::new(p.subtitle()).color(MUTE));
-                        }
-                        None => {
-                            ui.label(RichText::new(config::title()).size(24.0).strong());
-                            if let Some(e) = &self.pack_error {
-                                ui.colored_label(BAD, e.as_str());
-                                if ui.button(t("main.retry")).clicked() {
-                                    action = Some(Action::Reload);
+        let mut open_account = false;
+        if self.screen == Screen::Login {
+            let (a, l) = self.login_screen(ctx, idle);
+            action = a.or(action);
+            new_lang = l.or(new_lang);
+        } else {
+            // ── Header + installation location ──
+            egui::TopBottomPanel::top("top").show(ctx, |ui| {
+                ui.add_space(8.0);
+                let has_server = !config::server_address().is_empty();
+                // Right column (always present): language selector and, below it, the server box.
+                let left_w = (ui.available_width() - SERVER_BOX_W - 12.0).max(240.0);
+                ui.horizontal_top(|ui| {
+                    ui.vertical(|ui| {
+                        ui.set_width(left_w);
+                        match &self.pack {
+                            Some(p) => {
+                                ui.label(RichText::new(format!("{} {}", p.display_name(), p.version())).size(24.0).strong());
+                                ui.label(RichText::new(p.subtitle()).color(MUTE));
+                            }
+                            None => {
+                                ui.label(RichText::new(config::title()).size(24.0).strong());
+                                if let Some(e) = &self.pack_error {
+                                    ui.colored_label(BAD, e.as_str());
+                                    if ui.button(t("main.retry")).clicked() {
+                                        action = Some(Action::Reload);
+                                    }
+                                } else if self.busy == Busy::LoadingPack {
+                                    ui.horizontal(|ui| {
+                                        ui.spinner();
+                                        ui.label(t("main.loading_modpack"));
+                                    });
                                 }
-                            } else if self.busy == Busy::LoadingPack {
-                                ui.horizontal(|ui| {
-                                    ui.spinner();
-                                    ui.label(t("main.loading_modpack"));
-                                });
                             }
                         }
-                    }
-                    ui.horizontal(|ui| {
-                        let has_url = config::modpack_url().is_some();
-                        let btn = ui.add_enabled(idle && has_url && self.pack.is_some(), egui::Button::new(t("main.check_for_updates")));
-                        if btn.clicked() {
-                            action = Some(Action::CheckUpdate);
-                        }
-                        if !has_url {
-                            btn.on_disabled_hover_text(
-                                t("main.this_launcher_has_modpack_embedded"),
-                            );
-                        }
-                        let note = if has_url {
-                            t("main.checked_against_modpack_server")
-                        } else {
-                            t("main.modpack_embedded_executable")
-                        };
-                        ui.label(RichText::new(note).small().color(MUTE));
-                    });
-                });
-                ui.vertical(|ui| {
-                    ui.set_width(SERVER_BOX_W);
-                    // ── Language selector (top right) ──
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let cur = i18n::current();
-                            egui::ComboBox::from_id_salt("language").width(120.0).selected_text(cur.name.as_str()).show_ui(
-                                ui,
-                                |ui| {
-                                    for l in i18n::languages() {
-                                        if ui.selectable_label(cur.code == l.code, l.name.as_str()).clicked() && cur.code != l.code {
-                                            new_lang = Some(l.code);
-                                        }
-                                    }
-                                },
-                            );
-                            ui.label(RichText::new(t("main.language")).small().color(MUTE));
-                        });
-                    });
-                    if has_server {
-                        let (c, sv) = self.server_box(ui, idle);
-                        check_server |= c;
-                        save_server |= sv;
-                    }
-                });
-            });
-            ui.add_space(4.0);
-            ui.label(RichText::new(t("main.installation_location")).strong());
-            ui.horizontal(|ui| {
-                let w = (ui.available_width() - 110.0).max(80.0);
-                let r = ui.add_enabled(idle, egui::TextEdit::singleline(&mut self.install_dir).desired_width(w));
-                if r.changed() {
-                    rows_dirty = true;
-                }
-                if ui.add_enabled(idle, egui::Button::new(t("main.browse"))).clicked() {
-                    if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                        self.install_dir = dir.display().to_string();
-                        rows_dirty = true;
-                    }
-                }
-            });
-            ui.add_space(6.0);
-        });
-
-        // ── Account, progress and PLAY button ──
-        egui::TopBottomPanel::bottom("bottom").show(ctx, |ui| {
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(t("main.account")).strong());
-                ui.add_enabled_ui(idle, |ui| {
-                    ui.radio_value(&mut self.mode, Mode::Microsoft, "Microsoft");
-                    ui.radio_value(&mut self.mode, Mode::Offline, "Offline");
-                });
-            });
-            ui.add_enabled_ui(idle || self.busy == Busy::LoggingIn, |ui| {
-                ui.horizontal(|ui| match self.mode {
-                    Mode::Microsoft => {
-                        let shown = if self.selected_account.is_empty() {
-                            t("main.not_signed").to_string()
-                        } else {
-                            self.selected_account.clone()
-                        };
-                        ui.add_enabled_ui(idle, |ui| {
-                            egui::ComboBox::from_id_salt("accounts")
-                                .width(220.0)
-                                .selected_text(shown)
-                                .show_ui(ui, |ui| {
-                                    for a in &self.accounts {
-                                        ui.selectable_value(&mut self.selected_account, a.clone(), a.as_str());
-                                    }
-                                });
-                        });
-                        if ui.add_enabled(idle, egui::Button::new(t("main.sign_with_microsoft"))).clicked() {
-                            action = Some(Action::Login);
-                        }
-                    }
-                    Mode::Offline => {
-                        ui.label(t("main.player_name"));
-                        ui.add_enabled(
-                            idle,
-                            egui::TextEdit::singleline(&mut self.offline_name).desired_width(220.0).hint_text("Steve"),
-                        );
-                    }
-                });
-            });
-
-            // ── Custom maximum RAM ──
-            let ram_check = parse_ram(&self.ram_text, self.sys_ram_mb);
-            let recommended = self.pack.as_ref().and_then(|p| p.manifest.runtime.recommended_ram_mb);
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(t("main.maximum_ram")).strong());
-                ui.add_enabled(
-                    idle,
-                    egui::TextEdit::singleline(&mut self.ram_text)
-                        .desired_width(80.0)
-                        .hint_text(recommended.map(|r| r.to_string()).unwrap_or_else(|| "Auto".to_string())),
-                );
-                ui.label("MB");
-                if ui.add_enabled(idle && !self.ram_text.is_empty(), egui::Button::new(t("main.reset"))).clicked() {
-                    self.ram_text.clear();
-                }
-                let rec = recommended.map(|r| format!("{r} MB")).unwrap_or_else(|| t("main.not_set").to_string());
-                let sys = self.sys_ram_mb.map(gb).unwrap_or_else(|| t("main.unknown").to_string());
-                ui.label(RichText::new(tf!("main.recommended_system", rec = rec, sys = sys)).small().color(MUTE));
-            });
-            match &ram_check {
-                Err(e) => {
-                    ui.colored_label(BAD, e.as_str());
-                }
-                Ok(Some(mb)) => {
-                    if let Some(rec) = recommended {
-                        if *mb < rec {
-                            ui.colored_label(
-                                WARN,
-                                tf!("main.this_below_amount_recommended_by", rec = rec),
-                            );
-                        }
-                    }
-                }
-                Ok(None) => {}
-            }
-
-            if let Some((uri, code)) = &self.device_code {
-                ui.group(|ui| {
-                    ui.label(t("main.open_this_page_and_enter"));
-                    ui.hyperlink(uri.as_str());
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(code.as_str()).monospace().size(22.0).strong());
-                        if ui.button(t("main.copy_code")).clicked() {
-                            ui.ctx().copy_text(code.clone());
-                        }
-                    });
-                });
-            }
-
-            ui.add_space(4.0);
-            if self.status_error {
-                ui.colored_label(BAD, self.status.as_str());
-            } else {
-                ui.colored_label(MUTE, self.status.as_str());
-            }
-            match &self.progress {
-                Progress::Fraction(f, text) => {
-                    ui.add(egui::ProgressBar::new(*f).text(text.as_str()));
-                }
-                Progress::Spinner(text) => {
-                    ui.horizontal(|ui| {
-                        ui.spinner();
-                        ui.label(text.as_str());
-                    });
-                }
-                Progress::None => {}
-            }
-
-            let account_ok = match self.mode {
-                Mode::Offline => valid_offline_name(self.offline_name.trim()),
-                Mode::Microsoft => !self.selected_account.is_empty(),
-            };
-            let can_play = idle && self.pack.is_some() && account_ok && ram_check.is_ok();
-            let play = egui::Button::new(RichText::new(t("main.play")).size(22.0).strong().color(ACCENT_TEXT))
-                .fill(ACCENT)
-                .min_size(egui::vec2(ui.available_width(), 50.0));
-            if ui.add_enabled(can_play, play).clicked() {
-                action = Some(Action::Play);
-            }
-
-            egui::CollapsingHeader::new(t("main.log")).id_salt("log").default_open(false).open(self.open_log.take()).show(ui, |ui| {
-                egui::ScrollArea::vertical().max_height(170.0).stick_to_bottom(true).auto_shrink([false, true]).show(ui, |ui| {
-                    for l in &self.log {
-                        ui.monospace(l.as_str());
-                    }
-                });
-            });
-            ui.add_space(6.0);
-        });
-
-        // ── Mod list ──
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let active = self.rows.iter().filter(|r| matches!(r.status, RowStatus::Installed | RowStatus::Pending)).count();
-            let removed = self.rows.iter().filter(|r| r.status == RowStatus::Excluded).count();
-            let mut title = tf!("main.mods_active", active = active, total = self.rows.len());
-            if removed > 0 {
-                title.push_str(&tf!("main.removed", removed = removed));
-            }
-            ui.label(RichText::new(title).strong());
-            if self.rows.iter().any(|r| r.client_only) {
-                ui.label(
-                    RichText::new(t("main.can_uncheck_any_client_side"))
-                        .small()
-                        .color(MUTE),
-                );
-            }
-            ui.add_space(4.0);
-            use egui_extras::{Column, TableBuilder};
-            TableBuilder::new(ui)
-                .striped(true)
-                .column(Column::exact(64.0))
-                .column(Column::initial(280.0).at_least(140.0).clip(true))
-                .column(Column::initial(140.0).at_least(80.0).clip(true))
-                .column(Column::initial(90.0).at_least(70.0))
-                .column(Column::remainder().at_least(90.0))
-                .header(22.0, |mut h| {
-                    h.col(|ui| {
-                        ui.strong(t("main.include"));
-                    });
-                    h.col(|ui| {
-                        ui.strong("Mod");
-                    });
-                    h.col(|ui| {
-                        ui.strong(t("main.version"));
-                    });
-                    h.col(|ui| {
-                        ui.strong(t("main.source"));
-                    });
-                    h.col(|ui| {
-                        ui.strong(t("main.status"));
-                    });
-                })
-                .body(|body| {
-                    body.rows(24.0, self.rows.len(), |mut row| {
-                        let r = &self.rows[row.index()];
-                        row.col(|ui| {
-                            if r.client_only {
-                                let mut included = r.included;
-                                let locked = r.lock_note.is_some();
-                                let resp = ui.add_enabled(idle && !locked, egui::Checkbox::new(&mut included, ""));
-                                if locked {
-                                    if let Some(note) = &r.lock_note {
-                                        resp.on_disabled_hover_text(note.as_str());
-                                    }
-                                } else if resp.changed() {
-                                    toggle = Some(r.key.clone());
-                                }
+                        ui.horizontal(|ui| {
+                            let has_url = config::modpack_url().is_some();
+                            let btn = ui.add_enabled(idle && has_url && self.pack.is_some(), egui::Button::new(t("main.check_for_updates")));
+                            if btn.clicked() {
+                                action = Some(Action::CheckUpdate);
+                            }
+                            if !has_url {
+                                btn.on_disabled_hover_text(
+                                    t("main.this_launcher_has_modpack_embedded"),
+                                );
+                            }
+                            let note = if has_url {
+                                t("main.checked_against_modpack_server")
                             } else {
-                                ui.label(RichText::new(t("main.required")).small().color(MUTE));
+                                t("main.modpack_embedded_executable")
+                            };
+                            ui.label(RichText::new(note).small().color(MUTE));
+                        });
+                        // ── Installation location (left of the server box, to save vertical space) ──
+                        ui.add_space(4.0);
+                        ui.label(RichText::new(t("main.installation_location")).strong());
+                        ui.horizontal(|ui| {
+                            let w = (ui.available_width() - 110.0).max(80.0);
+                            let r = ui.add_enabled(idle, egui::TextEdit::singleline(&mut self.install_dir).desired_width(w));
+                            if r.changed() {
+                                rows_dirty = true;
+                            }
+                            if ui.add_enabled(idle, egui::Button::new(t("main.browse"))).clicked() {
+                                if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                                    self.install_dir = dir.display().to_string();
+                                    rows_dirty = true;
+                                }
                             }
                         });
-                        row.col(|ui| {
+                    });
+                    ui.vertical(|ui| {
+                        ui.set_width(SERVER_BOX_W);
+                        // ── Language selector (top right) ──
+                        ui.horizontal(|ui| {
+                            if let Some(l) = self.language_combo(ui) {
+                                new_lang = Some(l);
+                            }
+                        });
+                        // ── Account: skin head, name and the account settings button ──
+                        egui::Frame::group(ui.style()).fill(ui.visuals().extreme_bg_color).show(ui, |ui| {
+                            ui.set_width(ui.available_width());
                             ui.horizontal(|ui| {
-                                ui.label(r.name.as_str());
-                                if r.client_only {
-                                    ui.label(RichText::new(t("main.client_only")).small().color(MUTE));
-                                }
+                                self.draw_head(ui, CHIP_HEAD);
+                                let (name, kind) = self.account_label();
+                                ui.vertical(|ui| {
+                                    ui.spacing_mut().item_spacing.y = 2.0;
+                                    ui.label(RichText::new(name).strong());
+                                    ui.label(RichText::new(kind).small().color(MUTE));
+                                });
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    let btn = ui
+                                        .add_enabled(self.busy != Busy::Playing, egui::Button::new(t("main.account_settings_button")))
+                                        .on_hover_text(t("main.account_settings"));
+                                    if btn.clicked() {
+                                        open_account = true;
+                                    }
+                                    // Sign out (offline: back to the sign-in screen to choose another account).
+                                    let signed_in = match self.mode {
+                                        Mode::Microsoft => !self.selected_account.is_empty(),
+                                        Mode::Custom => !self.selected_custom.is_empty(),
+                                        Mode::Offline => true,
+                                    };
+                                    if signed_in && ui.add_enabled(idle, egui::Button::new(t("yggdrasil.sign_out"))).clicked() {
+                                        action = Some(match self.mode {
+                                            Mode::Microsoft => Action::MsLogout,
+                                            Mode::Custom => Action::CustomLogout,
+                                            Mode::Offline => Action::SignInScreen,
+                                        });
+                                    }
+                                });
                             });
                         });
-                        row.col(|ui| {
-                            ui.label(r.version.as_str());
-                        });
-                        row.col(|ui| {
-                            ui.label(r.source.as_str());
-                        });
-                        row.col(|ui| {
-                            let (text, color) = match r.status {
-                                RowStatus::Installed => (t("main.installed"), ACCENT),
-                                RowStatus::Pending => (t("main.pending"), WARN),
-                                RowStatus::Disabled => (t("main.disabled"), MUTE),
-                                RowStatus::ServerOnly => (t("main.server_only"), MUTE),
-                                RowStatus::Excluded => (t("main.removed_2"), MUTE),
-                            };
-                            ui.colored_label(color, text);
-                        });
+                        if has_server {
+                            let (c, sv) = self.server_box(ui, idle);
+                            check_server |= c;
+                            save_server |= sv;
+                        }
                     });
                 });
-        });
+                ui.add_space(6.0);
+            });
+
+            // ── Account, progress and PLAY button ──
+            egui::TopBottomPanel::bottom("bottom").show(ctx, |ui| {
+                ui.add_space(8.0);
+                // ── Custom maximum RAM ──
+                let ram_check = parse_ram(&self.ram_text, self.sys_ram_mb);
+                let recommended = self.pack.as_ref().and_then(|p| p.manifest.runtime.recommended_ram_mb);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(t("main.maximum_ram")).strong());
+                    ui.add_enabled(
+                        idle,
+                        egui::TextEdit::singleline(&mut self.ram_text)
+                            .desired_width(80.0)
+                            .hint_text(recommended.map(|r| r.to_string()).unwrap_or_else(|| "Auto".to_string())),
+                    );
+                    ui.label("MB");
+                    if ui.add_enabled(idle && !self.ram_text.is_empty(), egui::Button::new(t("main.reset"))).clicked() {
+                        self.ram_text.clear();
+                    }
+                    let rec = recommended.map(|r| format!("{r} MB")).unwrap_or_else(|| t("main.not_set").to_string());
+                    let sys = self.sys_ram_mb.map(gb).unwrap_or_else(|| t("main.unknown").to_string());
+                    ui.label(RichText::new(tf!("main.recommended_system", rec = rec, sys = sys)).small().color(MUTE));
+                });
+                match &ram_check {
+                    Err(e) => {
+                        ui.colored_label(BAD, e.as_str());
+                    }
+                    Ok(Some(mb)) => {
+                        if let Some(rec) = recommended {
+                            if *mb < rec {
+                                ui.colored_label(
+                                    WARN,
+                                    tf!("main.this_below_amount_recommended_by", rec = rec),
+                                );
+                            }
+                        }
+                    }
+                    Ok(None) => {}
+                }
+
+                ui.add_space(4.0);
+                self.status_progress(ui);
+
+                let can_play = idle && self.pack.is_some() && self.account_ok() && ram_check.is_ok();
+                let play = egui::Button::new(RichText::new(t("main.play")).size(22.0).strong().color(ACCENT_TEXT))
+                    .fill(ACCENT)
+                    .min_size(egui::vec2(ui.available_width(), 50.0));
+                if ui.add_enabled(can_play, play).clicked() {
+                    action = Some(Action::Play);
+                }
+
+                egui::CollapsingHeader::new(t("main.log")).id_salt("log").default_open(false).open(self.open_log.take()).show(ui, |ui| {
+                    egui::ScrollArea::vertical().max_height(170.0).stick_to_bottom(true).auto_shrink([false, true]).show(ui, |ui| {
+                        for l in &self.log {
+                            ui.monospace(l.as_str());
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+            });
+
+            // ── Mod list ──
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let active = self.rows.iter().filter(|r| matches!(r.status, RowStatus::Installed | RowStatus::Pending)).count();
+                let removed = self.rows.iter().filter(|r| r.status == RowStatus::Excluded).count();
+                let mut title = tf!("main.mods_active", active = active, total = self.rows.len());
+                if removed > 0 {
+                    title.push_str(&tf!("main.removed", removed = removed));
+                }
+                ui.label(RichText::new(title).strong());
+                if self.rows.iter().any(|r| r.client_only) {
+                    ui.label(
+                        RichText::new(t("main.can_uncheck_any_client_side"))
+                            .small()
+                            .color(MUTE),
+                    );
+                }
+                ui.add_space(4.0);
+                use egui_extras::{Column, TableBuilder};
+                TableBuilder::new(ui)
+                    .striped(true)
+                    .column(Column::exact(64.0))
+                    .column(Column::initial(280.0).at_least(140.0).clip(true))
+                    .column(Column::initial(140.0).at_least(80.0).clip(true))
+                    .column(Column::initial(90.0).at_least(70.0))
+                    .column(Column::remainder().at_least(90.0))
+                    .header(22.0, |mut h| {
+                        h.col(|ui| {
+                            ui.strong(t("main.include"));
+                        });
+                        h.col(|ui| {
+                            ui.strong("Mod");
+                        });
+                        h.col(|ui| {
+                            ui.strong(t("main.version"));
+                        });
+                        h.col(|ui| {
+                            ui.strong(t("main.source"));
+                        });
+                        h.col(|ui| {
+                            ui.strong(t("main.status"));
+                        });
+                    })
+                    .body(|body| {
+                        body.rows(24.0, self.rows.len(), |mut row| {
+                            let r = &self.rows[row.index()];
+                            row.col(|ui| {
+                                if r.client_only {
+                                    let mut included = r.included;
+                                    let locked = r.lock_note.is_some();
+                                    let resp = ui.add_enabled(idle && !locked, egui::Checkbox::new(&mut included, ""));
+                                    if locked {
+                                        if let Some(note) = &r.lock_note {
+                                            resp.on_disabled_hover_text(note.as_str());
+                                        }
+                                    } else if resp.changed() {
+                                        toggle = Some(r.key.clone());
+                                    }
+                                } else {
+                                    ui.label(RichText::new(t("main.required")).small().color(MUTE));
+                                }
+                            });
+                            row.col(|ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(r.name.as_str());
+                                    if r.client_only {
+                                        ui.label(RichText::new(t("main.client_only")).small().color(MUTE));
+                                    }
+                                });
+                            });
+                            row.col(|ui| {
+                                ui.label(r.version.as_str());
+                            });
+                            row.col(|ui| {
+                                ui.label(r.source.as_str());
+                            });
+                            row.col(|ui| {
+                                let (text, color) = match r.status {
+                                    RowStatus::Installed => (t("main.installed"), ACCENT),
+                                    RowStatus::Pending => (t("main.pending"), WARN),
+                                    RowStatus::Disabled => (t("main.disabled"), MUTE),
+                                    RowStatus::ServerOnly => (t("main.server_only"), MUTE),
+                                    RowStatus::Excluded => (t("main.removed_2"), MUTE),
+                                };
+                                ui.colored_label(color, text);
+                            });
+                        });
+                    });
+            });
+        }
+
+        // ── Account settings (modal) and, over it, the skin / name dialogs ──
+        if self.account_open {
+            if let Some(a) = self.account_window(ctx, idle) {
+                action = Some(a);
+            }
+        }
+        if let Some(a) = self.profile_dialogs(ctx) {
+            action = Some(a);
+        }
+        if open_account {
+            self.account_open = true;
+            ctx.request_repaint();
+        }
 
         // ── Insufficient-RAM warning ──
         if let Some((have, need)) = self.ram_prompt {
@@ -1229,9 +1857,27 @@ impl eframe::App for App {
             }
             Some(Action::CancelRam) => self.ram_prompt = None,
             Some(Action::Login) => self.start_login(ctx),
+            Some(Action::CustomLogin) => self.start_custom_login(ctx),
+            Some(Action::CustomLogout) => self.start_custom_logout(ctx),
+            Some(Action::MsLogout) => self.start_ms_logout(ctx),
+            Some(Action::SignInScreen) => {
+                self.account_open = false;
+                self.screen = Screen::Login;
+            }
+            Some(Action::UploadSkin) => self.start_skin_upload(ctx),
+            Some(Action::ChangeName) => self.start_rename(ctx),
+            Some(Action::Continue) => {
+                self.save_settings();
+                self.screen = Screen::Main;
+            }
             Some(Action::Reload) => self.load_pack(ctx),
             Some(Action::CheckUpdate) => self.start_update_check(ctx),
             None => {}
+        }
+        // Account settings closed without a usable account (signed out…): back to the sign-in screen.
+        if self.screen == Screen::Main && !self.account_open && self.busy == Busy::Idle && !self.account_ok() {
+            self.screen = Screen::Login;
+            self.save_settings();
         }
     }
 }

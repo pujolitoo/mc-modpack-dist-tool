@@ -71,6 +71,22 @@ fn main() {
         );
     }
 
+    // ── Custom authentication server (Yggdrasil API + authlib-injector) ──
+    let auth_url = get_str(&cfg, "auth", "url");
+    let auth_name = {
+        let n = get_str(&cfg, "auth", "name");
+        if n.is_empty() { "Custom".to_string() } else { n }
+    };
+    let auth_allow_microsoft = get(&cfg, "auth", "allow_microsoft").and_then(|v| v.as_bool()).unwrap_or(true);
+    let auth_allow_offline = get(&cfg, "auth", "allow_offline").and_then(|v| v.as_bool()).unwrap_or(true);
+    let authlib_injector = check_auth(&manifest_dir, &cfg, &auth_url);
+    if auth_url.is_empty() && !auth_allow_microsoft && !auth_allow_offline {
+        panic!(
+            "\n\nlauncher.toml: [auth] allow_microsoft and allow_offline are both false and [auth] url is empty: \
+             players would have no way to sign in.\n"
+        );
+    }
+
     if url.is_empty() && path.is_empty() {
         panic!(
             "\n\nlauncher.toml: fill in [modpack] url = \"…\" or path = \"…\" before building.\n\
@@ -90,6 +106,17 @@ fn main() {
     out.push_str(&format!("pub const CF_API_BASE: &str = {:?};\n", cf_base));
     out.push_str(&format!("pub const SERVER_ADDRESS: &str = {:?};\n", server_address));
     out.push_str(&format!("pub const SERVER_AUTO_JOIN: bool = {};\n", server_auto_join));
+    out.push_str(&format!("pub const AUTH_URL: &str = {:?};\n", auth_url));
+    out.push_str(&format!("pub const AUTH_NAME: &str = {:?};\n", auth_name));
+    out.push_str(&format!("pub const AUTH_ALLOW_MICROSOFT: bool = {};\n", auth_allow_microsoft));
+    out.push_str(&format!("pub const AUTH_ALLOW_OFFLINE: bool = {};\n", auth_allow_offline));
+    match &authlib_injector {
+        Some(p) => out.push_str(&format!(
+            "pub static AUTHLIB_INJECTOR: Option<&[u8]> = Some(include_bytes!({:?}));\n",
+            p.to_str().expect("the authlib-injector path must be UTF-8")
+        )),
+        None => out.push_str("pub static AUTHLIB_INJECTOR: Option<&[u8]> = None;\n"),
+    }
 
     if path.is_empty() {
         out.push_str("pub static EMBEDDED_PACK: Option<&[u8]> = None;\n");
@@ -125,6 +152,44 @@ fn main() {
 
     let dest = out_dir.join("build_config.rs");
     fs::write(&dest, out).expect("could not write build_config.rs");
+}
+
+// ═══════════════════════════════ custom authentication ═══════════════════════════════
+
+/// Validates `[auth]`. With a server URL, returns the authlib-injector jar to embed (it must exist and be valid).
+fn check_auth(manifest_dir: &Path, cfg: &toml::Table, auth_url: &str) -> Option<PathBuf> {
+    if auth_url.is_empty() {
+        return None;
+    }
+    let lower = auth_url.to_lowercase();
+    let local = ["http://localhost", "http://127.0.0.1", "http://[::1]"].iter().any(|p| lower.starts_with(p));
+    if !lower.starts_with("https://") && !local {
+        panic!(
+            "\n\nlauncher.toml: [auth] url = \"{auth_url}\" must use https:// (passwords and tokens travel over it).\n\
+             Plain http:// is only accepted for localhost, for testing.\n"
+        );
+    }
+    let jar = {
+        let j = get_str(cfg, "auth", "authlib_injector");
+        if j.is_empty() { "assets/authlib-injector.jar".to_string() } else { j }
+    };
+    let p = PathBuf::from(&jar);
+    let abs = if p.is_absolute() { p } else { manifest_dir.join(p) };
+    println!("cargo:rerun-if-changed={}", abs.display());
+    let bytes = fs::read(&abs).unwrap_or_else(|_| {
+        panic!(
+            "\n\nlauncher.toml: [auth] url is set, so authlib-injector is needed, but «{}» does not exist.\n\
+             Download authlib-injector-<version>.jar from https://github.com/yushijinhun/authlib-injector/releases\n\
+             and save it as {} (or set [auth] authlib_injector to its path).\n",
+            abs.display(),
+            jar
+        )
+    });
+    let premain = b"moe/yushi/authlibinjector/Premain.class";
+    if !bytes.starts_with(b"PK") || !bytes.windows(premain.len()).any(|w| w == premain) {
+        panic!("\n\n«{}» is not an authlib-injector jar (moe/yushi/authlibinjector/Premain.class not found).\n", abs.display());
+    }
+    Some(abs)
 }
 
 // ═══════════════════════════════ languages (lang/*.json) ═══════════════════════════════
