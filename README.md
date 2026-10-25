@@ -64,6 +64,13 @@ server cannot be reached, the game still starts with the saved session (single-p
 with `-javaagent:authlib-injector.jar=<url>` and the server metadata pre-fetched (`-Dauthlibinjector.yggdrasil.prefetched`).
 `http://` URLs are rejected at build time, except for `localhost` (testing).
 
+## Application icon
+
+Put a square PNG (256×256 or larger) at `assets/icon.png`, or set its path in `[launcher] icon`. At build time it
+becomes the icon of the launcher window and taskbar and, on Windows, the icon of the `.exe` itself (every size from
+16 to 256 px is generated). Embedding it in the `.exe` uses `rc.exe` from the Windows SDK, which comes with the
+Visual Studio C++ build tools that Rust already needs on Windows.
+
 ## Languages
 All launcher texts live in `lang/<code>.json` (`lang/en.json`, `lang/es.json`...), embedded in the executable at build
 time. `[launcher] language` sets the default; each player can switch it with the **Language** selector under the title,

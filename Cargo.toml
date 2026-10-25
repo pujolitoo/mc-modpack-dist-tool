@@ -30,6 +30,11 @@ uuid = "1"             # profile UUIDs of the custom authentication server (same
 [build-dependencies]
 toml = "0.8"         # build.rs reads launcher.toml at build time
 serde_json = "1"     # build.rs validates the lang/*.json files
+png = "0.18"         # build.rs resizes the application icon ([launcher] icon) to every size of the .ico
+
+# Embeds the icon into the Windows executable (only needed when building on Windows).
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
 
 [profile.release]
 opt-level = 3

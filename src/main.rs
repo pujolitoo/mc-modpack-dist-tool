@@ -15,6 +15,7 @@ mod selfupdate;
 mod server;
 mod skin;
 mod sync;
+mod usermods;
 mod util;
 mod yggdrasil;
 
@@ -51,13 +52,15 @@ fn main() -> eframe::Result<()> {
     compat::ensure_classic_zlib(); // Linux: must run before any thread exists (it may restart the process)
     selfupdate::cleanup_old(); // removes leftovers from a previous update
     let title = config::title();
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title(title.clone())
-            .with_inner_size([820.0, 820.0])
-            .with_min_inner_size([680.0, 560.0]),
-        ..Default::default()
-    };
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title(title.clone())
+        .with_inner_size([820.0, 820.0])
+        .with_min_inner_size([680.0, 560.0]);
+    // Window / taskbar icon ([launcher] icon in launcher.toml).
+    if let Some(icon) = config::icon_png().and_then(server::decode_png) {
+        viewport = viewport.with_icon(egui::IconData { rgba: icon.rgba, width: icon.width as u32, height: icon.height as u32 });
+    }
+    let options = eframe::NativeOptions { viewport, ..Default::default() };
     eframe::run_native(
         &title,
         options,
@@ -195,6 +198,8 @@ enum RowStatus {
     ServerOnly,
     /// Removed by the player (client-side-only mod).
     Excluded,
+    /// Added by the player (their own JAR, not part of the modpack).
+    Added,
 }
 
 struct Row {
@@ -315,7 +320,7 @@ fn compute_rows(pack: &LoadedPack, install: &str, excluded: &HashSet<String>) ->
     let mods_rel = pack.manifest.mods_dir();
     let eff = pack::effective_excluded(&pack.manifest, excluded);
     let needed = pack::required_by(&pack.manifest, &eff);
-    pack.manifest
+    let mut rows: Vec<Row> = pack.manifest
         .mods
         .iter()
         .map(|m| {
@@ -361,7 +366,19 @@ fn compute_rows(pack: &LoadedPack, install: &str, excluded: &HashSet<String>) ->
                 lock_note,
             }
         })
-        .collect()
+        .collect();
+    // Mods added by the player, after the modpack's.
+    rows.extend(usermods::list(pack, install).into_iter().map(|name| Row {
+        name: name.clone(),
+        version: String::new(),
+        source: t("main.local_jar").to_string(),
+        status: RowStatus::Added,
+        key: name,
+        client_only: false,
+        included: true,
+        lock_note: None,
+    }));
+    rows
 }
 
 /// Total physical system RAM in MB (None if it could not be read).
@@ -547,6 +564,40 @@ impl App {
     }
 
     /// Excludes or re-includes a client-side-only mod and remembers the choice.
+    /// Lets the player choose JAR files and copies them into the installation's mods folder.
+    fn add_user_mods(&mut self) {
+        let Some(pack) = self.pack.clone() else { return };
+        if self.install_dir.trim().is_empty() {
+            return self.fail(t("main.choose_installation_folder").to_string());
+        }
+        let Some(files) = rfd::FileDialog::new().add_filter("Minecraft mod (.jar)", &["jar"]).pick_files() else { return };
+        let (added, errors) = usermods::add(&pack, &self.install_dir, &files);
+        self.refresh_rows();
+        if added > 0 {
+            self.push_log(tf!("main.mods_added", count = added));
+        }
+        if errors.is_empty() {
+            self.status = tf!("main.mods_added", count = added);
+            self.status_error = false;
+        } else {
+            self.fail(errors.join("\n"));
+        }
+    }
+
+    /// Deletes a mod added by the player.
+    fn remove_user_mod(&mut self, name: String) {
+        let Some(pack) = self.pack.clone() else { return };
+        match usermods::remove(&pack, &self.install_dir, &name) {
+            Ok(()) => {
+                self.status = tf!("main.mod_removed", name = name);
+                self.status_error = false;
+                self.push_log(self.status.clone());
+            }
+            Err(e) => self.fail(format!("{e:#}")),
+        }
+        self.refresh_rows();
+    }
+
     fn toggle_mod(&mut self, key: String) {
         let Some(id) = self.pack.as_ref().map(|p| p.id()) else { return };
         let list = self.settings.excluded.entry(id).or_default();
@@ -1509,6 +1560,8 @@ impl eframe::App for App {
         let mut action: Option<Action> = None;
         let mut rows_dirty = false;
         let mut toggle: Option<String> = None;
+        let mut add_mods = false;
+        let mut remove_mod: Option<String> = None;
         let mut check_server = false;
         let mut new_lang: Option<&'static str> = None;
         let mut save_server = false;
@@ -1709,11 +1762,24 @@ impl eframe::App for App {
             egui::CentralPanel::default().show(ctx, |ui| {
                 let active = self.rows.iter().filter(|r| matches!(r.status, RowStatus::Installed | RowStatus::Pending)).count();
                 let removed = self.rows.iter().filter(|r| r.status == RowStatus::Excluded).count();
-                let mut title = tf!("main.mods_active", active = active, total = self.rows.len());
+                let added = self.rows.iter().filter(|r| r.status == RowStatus::Added).count();
+                let total = self.rows.len() - added;
+                let mut title = tf!("main.mods_active", active = active, total = total);
                 if removed > 0 {
                     title.push_str(&tf!("main.removed", removed = removed));
                 }
-                ui.label(RichText::new(title).strong());
+                if added > 0 {
+                    title.push_str(&tf!("main.added_count", added = added));
+                }
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(title).strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let can_add = idle && self.pack.is_some() && !self.install_dir.trim().is_empty();
+                        if ui.add_enabled(can_add, egui::Button::new(t("main.add_mods"))).on_hover_text(t("main.add_mods_hint")).clicked() {
+                            add_mods = true;
+                        }
+                    });
+                });
                 if self.rows.iter().any(|r| r.client_only) {
                     ui.label(
                         RichText::new(t("main.can_uncheck_any_client_side"))
@@ -1751,7 +1817,12 @@ impl eframe::App for App {
                         body.rows(24.0, self.rows.len(), |mut row| {
                             let r = &self.rows[row.index()];
                             row.col(|ui| {
-                                if r.client_only {
+                                if r.status == RowStatus::Added {
+                                    let btn = ui.add_enabled(idle, egui::Button::new("🗑").small()).on_hover_text(t("main.remove_mod"));
+                                    if btn.clicked() {
+                                        remove_mod = Some(r.key.clone());
+                                    }
+                                } else if r.client_only {
                                     let mut included = r.included;
                                     let locked = r.lock_note.is_some();
                                     let resp = ui.add_enabled(idle && !locked, egui::Checkbox::new(&mut included, ""));
@@ -1787,6 +1858,7 @@ impl eframe::App for App {
                                     RowStatus::Disabled => (t("main.disabled"), MUTE),
                                     RowStatus::ServerOnly => (t("main.server_only"), MUTE),
                                     RowStatus::Excluded => (t("main.removed_2"), MUTE),
+                                    RowStatus::Added => (t("main.added_by_you"), ACCENT),
                                 };
                                 ui.colored_label(color, text);
                             });
@@ -1835,6 +1907,12 @@ impl eframe::App for App {
 
         if let Some(key) = toggle {
             self.toggle_mod(key);
+        }
+        if add_mods {
+            self.add_user_mods();
+        }
+        if let Some(name) = remove_mod {
+            self.remove_user_mod(name);
         }
         if rows_dirty {
             self.refresh_rows();

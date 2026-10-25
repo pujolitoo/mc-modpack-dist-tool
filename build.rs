@@ -2,6 +2,9 @@
 //! title, modpack URL, Microsoft ID, minimum RAM and (if `path` is specified) the embedded ZIP
 //! inside the executable itself with `include_bytes!`.
 //!
+//! With `[launcher] icon` (or `assets/icon.png`) it also builds the application icon: embedded in the Windows
+//! executable (Explorer, taskbar) and in the launcher (window icon).
+//!
 //! It also embeds the languages of `lang/*.json` (generates `languages.rs`, see src/i18n.rs) and checks them:
 //! every key used in the code must exist in `lang/en.json`, and `tf!` must pass every placeholder of its text.
 
@@ -150,8 +153,46 @@ fn main() {
         out.push_str("pub static CLASSIC_ZLIB: Option<&[u8]> = None;\n");
     }
 
+    // ── Application icon ──
+    match make_icon(&manifest_dir, &cfg, &out_dir) {
+        Some((ico, png)) => {
+            out.push_str(&format!(
+                "pub static ICON_PNG: Option<&[u8]> = Some(include_bytes!({:?}));\n",
+                png.to_str().expect("OUT_DIR must be UTF-8")
+            ));
+            if env::var("CARGO_CFG_TARGET_OS").map(|os| os == "windows").unwrap_or(false) {
+                windows_resources(&ico, &title);
+            }
+        }
+        None => out.push_str("pub static ICON_PNG: Option<&[u8]> = None;\n"),
+    }
+
     let dest = out_dir.join("build_config.rs");
     fs::write(&dest, out).expect("could not write build_config.rs");
+}
+
+/// Windows: embeds the icon (and the title as the file description) into the .exe, with the resource compiler
+/// (rc.exe of the Windows SDK, installed with the Visual Studio C++ build tools).
+#[cfg(windows)]
+fn windows_resources(ico: &Path, title: &str) {
+    let mut res = winresource::WindowsResource::new();
+    res.set_icon(ico.to_str().expect("OUT_DIR must be UTF-8"));
+    if !title.is_empty() {
+        res.set("FileDescription", title);
+        res.set("ProductName", title);
+    }
+    if let Err(e) = res.compile() {
+        println!(
+            "cargo:warning=Could not embed the icon in the .exe ({e}). The launcher window still shows it. \
+             Install the Windows SDK (Visual Studio Build Tools, \"Desktop development with C++\") to fix this."
+        );
+    }
+}
+
+/// Building for Windows from another system: the .exe gets no icon (the window still has it).
+#[cfg(not(windows))]
+fn windows_resources(_ico: &Path, _title: &str) {
+    println!("cargo:warning=Cross-compiling for Windows: the icon is not embedded in the .exe (the window still shows it).");
 }
 
 // ═══════════════════════════════ custom authentication ═══════════════════════════════
@@ -430,4 +471,146 @@ fn embed_languages(manifest_dir: &Path, out_dir: &Path) -> Vec<String> {
     out.push_str("];\n");
     fs::write(out_dir.join("languages.rs"), out).expect("could not write languages.rs");
     files.into_iter().map(|f| f.code).collect()
+}
+
+// ═══════════════════════════════ application icon ═══════════════════════════════
+
+/// Sizes stored in the Windows .ico (Explorer, taskbar, Alt+Tab… pick the closest one).
+const ICO_SIZES: [u32; 7] = [16, 24, 32, 48, 64, 128, 256];
+
+/// Reads `[launcher] icon` (a square PNG; default `assets/icon.png` if it exists) and writes to OUT_DIR:
+/// `icon.ico` (every size, for the Windows executable) and `icon.png` (256×256, for the window and taskbar).
+/// Returns (icon.ico, icon.png), or `None` if there is no icon.
+fn make_icon(manifest_dir: &Path, cfg: &toml::Table, out_dir: &Path) -> Option<(PathBuf, PathBuf)> {
+    let configured = get_str(cfg, "launcher", "icon");
+    let default = manifest_dir.join("assets/icon.png");
+    println!("cargo:rerun-if-changed={}", default.display());
+    let path = if configured.is_empty() {
+        if !default.is_file() {
+            return None;
+        }
+        default
+    } else {
+        let p = PathBuf::from(&configured);
+        let abs = if p.is_absolute() { p } else { manifest_dir.join(p) };
+        println!("cargo:rerun-if-changed={}", abs.display());
+        if !abs.is_file() {
+            panic!("\n\nlauncher.toml: [launcher] icon = \"{configured}\" does not exist (relative to {}).\n", manifest_dir.display());
+        }
+        abs
+    };
+    let bytes = fs::read(&path).unwrap_or_else(|e| panic!("could not read {}: {e}", path.display()));
+    let (w, h, rgba) = decode_rgba(&bytes).unwrap_or_else(|| {
+        panic!("\n\nlauncher.toml: [launcher] icon «{}» is not a valid PNG image.\n", path.display())
+    });
+    if w != h || w < 16 {
+        panic!(
+            "\n\nlauncher.toml: [launcher] icon «{}» is {w}×{h}: it must be a square PNG (256×256 or larger is best).\n",
+            path.display()
+        );
+    }
+    if w < 256 {
+        println!("cargo:warning=[launcher] icon is {w}×{w}: a 256×256 (or larger) PNG looks sharper on Windows.");
+    }
+    let pngs: Vec<(u32, Vec<u8>)> = ICO_SIZES.iter().map(|&s| (s, encode_png(s, &resize(&rgba, w, s)))).collect();
+    let ico = out_dir.join("icon.ico");
+    fs::write(&ico, ico_file(&pngs)).expect("could not write icon.ico");
+    let png = out_dir.join("icon.png");
+    fs::write(&png, &pngs.last().expect("sizes").1).expect("could not write icon.png");
+    Some((ico, png))
+}
+
+/// Decodes a PNG to RGBA8: (width, height, pixels).
+fn decode_rgba(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info().ok()?;
+    let mut buf = vec![0u8; reader.output_buffer_size()?];
+    let info = reader.next_frame(&mut buf).ok()?;
+    let px = &buf[..info.buffer_size()];
+    let rgba: Vec<u8> = match info.color_type {
+        png::ColorType::Rgba => px.to_vec(),
+        png::ColorType::Rgb => px.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect(),
+        png::ColorType::GrayscaleAlpha => px.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect(),
+        png::ColorType::Grayscale => px.iter().flat_map(|&g| [g, g, g, 255]).collect(),
+        png::ColorType::Indexed => return None,
+    };
+    (rgba.len() == (info.width * info.height * 4) as usize).then_some((info.width, info.height, rgba))
+}
+
+/// Resizes a square RGBA image from `from`×`from` to `to`×`to`: area average when shrinking (with alpha weighting,
+/// so transparent pixels do not darken the edges), nearest neighbour when enlarging (keeps pixel art crisp).
+fn resize(rgba: &[u8], from: u32, to: u32) -> Vec<u8> {
+    let (from, to) = (from as usize, to as usize);
+    let mut out = vec![0u8; to * to * 4];
+    for y in 0..to {
+        for x in 0..to {
+            let o = (y * to + x) * 4;
+            if from <= to {
+                let i = ((y * from / to) * from + x * from / to) * 4;
+                out[o..o + 4].copy_from_slice(&rgba[i..i + 4]);
+                continue;
+            }
+            // Source rectangle covered by this pixel, in source pixels (fractional edges weighted).
+            let (x0, x1) = (x as f64 * from as f64 / to as f64, (x + 1) as f64 * from as f64 / to as f64);
+            let (y0, y1) = (y as f64 * from as f64 / to as f64, (y + 1) as f64 * from as f64 / to as f64);
+            let mut acc = [0f64; 4];
+            let mut area = 0f64;
+            for sy in y0.floor() as usize..(y1.ceil() as usize).min(from) {
+                let wy = (y1.min(sy as f64 + 1.0) - y0.max(sy as f64)).max(0.0);
+                for sx in x0.floor() as usize..(x1.ceil() as usize).min(from) {
+                    let wx = (x1.min(sx as f64 + 1.0) - x0.max(sx as f64)).max(0.0);
+                    let wgt = wx * wy;
+                    let i = (sy * from + sx) * 4;
+                    let a = rgba[i + 3] as f64;
+                    for c in 0..3 {
+                        acc[c] += rgba[i + c] as f64 * a * wgt;
+                    }
+                    acc[3] += a * wgt;
+                    area += wgt;
+                }
+            }
+            if acc[3] > 0.0 {
+                for c in 0..3 {
+                    out[o + c] = (acc[c] / acc[3]).round().clamp(0.0, 255.0) as u8;
+                }
+                out[o + 3] = (acc[3] / area).round().clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+    out
+}
+
+fn encode_png(size: u32, rgba: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    {
+        let mut enc = png::Encoder::new(&mut out, size, size);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut writer = enc.write_header().expect("png header");
+        writer.write_image_data(rgba).expect("png data");
+        writer.finish().expect("png finish");
+    }
+    out
+}
+
+/// Windows .ico with PNG-compressed images (supported since Windows Vista).
+fn ico_file(images: &[(u32, Vec<u8>)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(&[0, 0, 1, 0]); // reserved, type 1 = icon
+    out.extend_from_slice(&(images.len() as u16).to_le_bytes());
+    let mut offset = 6 + 16 * images.len() as u32;
+    for (size, data) in images {
+        let s = if *size >= 256 { 0 } else { *size as u8 }; // 0 means 256
+        out.extend_from_slice(&[s, s, 0, 0]); // width, height, palette colours, reserved
+        out.extend_from_slice(&1u16.to_le_bytes()); // colour planes
+        out.extend_from_slice(&32u16.to_le_bytes()); // bits per pixel
+        out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        out.extend_from_slice(&offset.to_le_bytes());
+        offset += data.len() as u32;
+    }
+    for (_, data) in images {
+        out.extend_from_slice(data);
+    }
+    out
 }

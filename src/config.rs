@@ -5,7 +5,7 @@ use crate::util;
 
 // Generates: TITLE, MODPACK_URL, UPDATE_URL, LANGUAGE, MSA_APP_ID, MIN_RAM_MB, FORMAT, CF_API_KEY, CF_API_BASE,
 // SERVER_ADDRESS, SERVER_AUTO_JOIN, AUTH_URL, AUTH_NAME, AUTH_ALLOW_MICROSOFT, AUTH_ALLOW_OFFLINE, AUTHLIB_INJECTOR,
-// EMBEDDED_PACK and CLASSIC_ZLIB.
+// EMBEDDED_PACK, CLASSIC_ZLIB and ICON_PNG.
 include!(concat!(env!("OUT_DIR"), "/build_config.rs"));
 
 /// Azure application ID for the PortableMC project (the same one used by its CLI).
@@ -128,6 +128,11 @@ pub fn allow_microsoft() -> bool {
 /// Whether offline accounts are offered (`[auth] allow_offline`).
 pub fn allow_offline() -> bool {
     AUTH_ALLOW_OFFLINE
+}
+
+/// Application icon (256×256 PNG built from `[launcher] icon`), if there is one.
+pub fn icon_png() -> Option<&'static [u8]> {
+    ICON_PNG
 }
 
 /// authlib-injector jar embedded at build time (only when `[auth] url` is set).
