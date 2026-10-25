@@ -11,6 +11,11 @@
 # Window title (optional).
 title = "Test Launcher"
 
+# Application icon: a square PNG (256×256 or larger is best). It is shown in the window, the taskbar and,
+# on Windows, as the icon of the .exe file. Relative to this folder. Empty = assets/icon.png if that file
+# exists, otherwise no icon.
+icon = ""
+
 # Default language of the launcher texts: the name of a file in the lang/ folder without ".json"
 # ("en" = English, "es" = Spanish, ...). Each player can switch it in the launcher; their choice is remembered.
 # To add a language, copy lang/en.json to lang/<code>.json, translate the texts and rebuild.
