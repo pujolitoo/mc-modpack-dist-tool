@@ -3,6 +3,7 @@
 
 #[macro_use]
 mod i18n;
+mod cli;
 mod compat;
 mod config;
 mod external;
@@ -49,6 +50,11 @@ const CHIP_HEAD: f32 = 40.0;
 const LOGIN_W: f32 = 560.0;
 
 fn main() -> eframe::Result<()> {
+    // Command line (e.g. `--sync-server <folder>` for a dedicated server): runs without opening the window.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = cli::run(&args) {
+        std::process::exit(code);
+    }
     compat::ensure_classic_zlib(); // Linux: must run before any thread exists (it may restart the process)
     selfupdate::cleanup_old(); // removes leftovers from a previous update
     let title = config::title();

@@ -276,6 +276,17 @@
     "profile.too_many_requests": "Too many attempts: wait a few minutes and try again.",
     "profile.server_said": "The server rejected the change (HTTP {code}): {message}",
     "profile.http_error": "The server rejected the change (HTTP {code}).",
-    "yggdrasil.debug_enabled": "authlib-injector diagnostics enabled (MODPACK_LAUNCHER_AUTH_DEBUG): every forwarded request is logged."
+    "yggdrasil.debug_enabled": "authlib-injector diagnostics enabled (MODPACK_LAUNCHER_AUTH_DEBUG): every forwarded request is logged.",
+    "cli.usage": "Usage: {exe} --sync-server <server folder> [--no-config]\n\n  --sync-server <folder>  Synchronizes the mods (and the configuration) of a dedicated server with the modpack:\n                          installs the mods that run on a server, removes the ones it installed before that are\n                          no longer in the modpack and skips the client-only ones. Mods added by hand are kept.\n  --no-config             Only the mods: do not apply the modpack configuration (overrides).\n\nWithout options, the launcher window opens.",
+    "cli.unknown_option": "Unknown option or extra argument: {option}",
+    "cli.folder_missing": "The server folder does not exist: {path}",
+    "cli.syncing": "Synchronizing the server at {path}",
+    "cli.not_a_server_warning": "Warning: this folder does not look like a server (no server.properties, run.sh, run.bat or libraries). Continuing anyway.",
+    "cli.config_skipped": "--no-config: the modpack configuration (overrides) will not be applied.",
+    "cli.using_cached_pack": "Warning: the modpack server could not be reached; using the last downloaded copy.",
+    "cli.modpack": "Modpack: {name} {version}",
+    "cli.done": "Done: {count} server mods up to date.",
+    "cli.failed": "ERROR: {error}",
+    "sync.client_only_skipped": "Client-only, not installed on the server ({count}): {mods}"
   }
 }

@@ -2,7 +2,9 @@
 
 use crate::pack::LoadedPack;
 use eframe::egui;
-use std::sync::{mpsc::Sender, Arc};
+use std::io::Write;
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::{mpsc::Sender, Arc, Mutex};
 
 pub enum Msg {
     PackLoaded(Result<Arc<LoadedPack>, String>),
@@ -44,21 +46,62 @@ pub struct ProfileChange {
     pub renamed: Option<(String, String)>,
 }
 
-/// Sends messages to the UI and wakes it up for repainting.
+/// Sends messages to the UI and wakes it up for repainting, or (without a window, `--sync-server`) prints them.
 #[derive(Clone)]
 pub struct Reporter {
-    tx: Sender<Msg>,
-    ctx: egui::Context,
+    target: Target,
+}
+
+#[derive(Clone)]
+enum Target {
+    Ui { tx: Sender<Msg>, ctx: egui::Context },
+    /// Prints to the console and appends to a log file (if any). Progress is printed every 10%.
+    Console { log: Option<Arc<Mutex<std::fs::File>>>, last_tenth: Arc<AtomicI32> },
 }
 
 impl Reporter {
     pub fn new(tx: Sender<Msg>, ctx: egui::Context) -> Self {
-        Self { tx, ctx }
+        Self { target: Target::Ui { tx, ctx } }
+    }
+
+    /// Reporter for the command line: prints messages and also writes them to `log` (if any).
+    pub fn console(log: Option<std::fs::File>) -> Self {
+        Self { target: Target::Console { log: log.map(|f| Arc::new(Mutex::new(f))), last_tenth: Arc::new(AtomicI32::new(-1)) } }
     }
 
     pub fn send(&self, msg: Msg) {
-        let _ = self.tx.send(msg);
-        self.ctx.request_repaint();
+        match &self.target {
+            Target::Ui { tx, ctx } => {
+                let _ = tx.send(msg);
+                ctx.request_repaint();
+            }
+            Target::Console { log, last_tenth } => {
+                let line = match msg {
+                    Msg::Log(text) | Msg::Busy(text) => text,
+                    Msg::Status { text, error } => {
+                        if error {
+                            format!("ERROR: {text}")
+                        } else {
+                            text
+                        }
+                    }
+                    Msg::Progress { fraction, text } => {
+                        let tenth = (fraction.clamp(0.0, 1.0) * 10.0).floor() as i32;
+                        if last_tenth.swap(tenth, Ordering::SeqCst) == tenth {
+                            return;
+                        }
+                        format!("[{:>3}%] {text}", (fraction.clamp(0.0, 1.0) * 100.0).round() as i32)
+                    }
+                    _ => return,
+                };
+                println!("{line}");
+                if let Some(f) = log {
+                    if let Ok(mut f) = f.lock() {
+                        let _ = writeln!(f, "{line}");
+                    }
+                }
+            }
+        }
     }
 
     pub fn log(&self, text: impl Into<String>) {

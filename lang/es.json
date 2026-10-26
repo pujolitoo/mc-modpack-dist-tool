@@ -276,6 +276,17 @@
     "profile.too_many_requests": "Demasiados intentos: espera unos minutos y vuelve a probar.",
     "profile.server_said": "El servidor rechazó el cambio (HTTP {code}): {message}",
     "profile.http_error": "El servidor rechazó el cambio (HTTP {code}).",
-    "yggdrasil.debug_enabled": "Diagnóstico de authlib-injector activado (MODPACK_LAUNCHER_AUTH_DEBUG): se registra cada petición reenviada."
+    "yggdrasil.debug_enabled": "Diagnóstico de authlib-injector activado (MODPACK_LAUNCHER_AUTH_DEBUG): se registra cada petición reenviada.",
+    "cli.usage": "Uso: {exe} --sync-server <carpeta del servidor> [--no-config]\n\n  --sync-server <carpeta>  Sincroniza los mods (y la configuración) de un servidor dedicado con el modpack:\n                           instala los mods que funcionan en un servidor, quita los que instaló antes y ya no\n                           están en el modpack, y se salta los que son solo de cliente. Los mods añadidos a mano se conservan.\n  --no-config              Solo los mods: no aplica la configuración del modpack (overrides).\n\nSin opciones, se abre la ventana del launcher.",
+    "cli.unknown_option": "Opción desconocida o argumento de más: {option}",
+    "cli.folder_missing": "La carpeta del servidor no existe: {path}",
+    "cli.syncing": "Sincronizando el servidor en {path}",
+    "cli.not_a_server_warning": "Aviso: esta carpeta no parece un servidor (no hay server.properties, run.sh, run.bat ni libraries). Se continúa igualmente.",
+    "cli.config_skipped": "--no-config: no se aplicará la configuración del modpack (overrides).",
+    "cli.using_cached_pack": "Aviso: no se ha podido contactar con el servidor del modpack; se usa la última copia descargada.",
+    "cli.modpack": "Modpack: {name} {version}",
+    "cli.done": "Listo: {count} mods del servidor al día.",
+    "cli.failed": "ERROR: {error}",
+    "sync.client_only_skipped": "Solo de cliente, no se instalan en el servidor ({count}): {mods}"
   }
 }

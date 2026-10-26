@@ -1,4 +1,7 @@
 //! Synchronizes the installation with the modpack: downloads/verifies mods, applies overrides and removes leftovers.
+//!
+//! Two sides: the player's installation (`sync_pack`) and a dedicated server (`sync_server`, used by
+//! `--sync-server`), which gets the mods that run on a server and not the client-only ones.
 
 use crate::i18n::t;
 use crate::msg::Reporter;
@@ -26,18 +29,8 @@ struct State {
     mods: Vec<String>,
 }
 
+/// Synchronizes the player's installation (`excluded`: client-side-only mods the player removed).
 pub fn sync_pack(pack: &LoadedPack, install: &Path, excluded: &HashSet<String>, rep: &Reporter) -> Result<()> {
-    fs::create_dir_all(install)?;
-    let mods_rel = pack.manifest.mods_dir();
-    let mods_dir = util::safe_join(install, &mods_rel)?;
-    fs::create_dir_all(&mods_dir)?;
-
-    let state_path = install.join(STATE_FILE);
-    let old: State = fs::read_to_string(&state_path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
-
     // Client-side-only mods the player chose to exclude (filtered already: dependencies and required mods are never included).
     let eff = effective_excluded(&pack.manifest, excluded);
     let removed_by_player = |m: &&ModEntry| m.is_client_only() && eff.contains(&m.key());
@@ -51,8 +44,66 @@ pub fn sync_pack(pack: &LoadedPack, install: &Path, excluded: &HashSet<String>, 
     if skipped > 0 {
         rep.log(tf!("sync.mods_removed_by_player_skipped", skipped = skipped));
     }
+    sync_files(pack, install, &active, pack.override_dirs(), false, rep)
+}
+
+/// Synchronizes a dedicated server: mods that can run on a server (not the client-only ones) and, if
+/// `apply_config`, the configuration (overrides; the client-only ones are skipped). Returns the number of mods.
+pub fn sync_server(pack: &LoadedPack, server_dir: &Path, apply_config: bool, rep: &Reporter) -> Result<usize> {
+    let mods_rel = pack.manifest.mods_dir();
+    let mut active: Vec<&ModEntry> = Vec::new();
+    let mut client_only: Vec<&str> = Vec::new();
+    for m in pack.manifest.mods.iter().filter(|m| m.enabled) {
+        let rel = m.rel_path(&mods_rel)?;
+        if m.side.server.as_deref() == Some("unsupported") || client_only_file(&rel) {
+            client_only.push(&m.name);
+        } else {
+            active.push(m);
+        }
+    }
+    if !client_only.is_empty() {
+        rep.log(tf!("sync.client_only_skipped", count = client_only.len(), mods = client_only.join(", ")));
+    }
+    // Modrinth packs: the server takes server-overrides/ instead of client-overrides/.
+    let dirs: Vec<String> = if apply_config {
+        pack.override_dirs()
+            .iter()
+            .map(|d| if d == "client-overrides/" { "server-overrides/".to_string() } else { d.clone() })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    sync_files(pack, server_dir, &active, &dirs, true, rep)?;
+    Ok(active.len())
+}
+
+/// Files that only matter to a game client (player options, server list, shaders, resource packs).
+fn client_only_file(rel: &str) -> bool {
+    let rel = rel.replace('\\', "/").to_lowercase();
+    let top = rel.split('/').next().unwrap_or("");
+    ["options.txt", "optionsof.txt", "optionsshaders.txt", "servers.dat", "shaderpacks", "resourcepacks"].contains(&top)
+}
+
+/// Common part: installs `active`, removes the mods it installed before that are no longer wanted and applies the
+/// override folders `override_dirs` (on a server, skipping the client-only files).
+fn sync_files(
+    pack: &LoadedPack,
+    install: &Path,
+    active: &[&ModEntry],
+    override_dirs: &[String],
+    server: bool,
+    rep: &Reporter,
+) -> Result<()> {
+    fs::create_dir_all(install)?;
+    let mods_rel = pack.manifest.mods_dir();
+    fs::create_dir_all(util::safe_join(install, &mods_rel)?)?;
+    let state_path = install.join(STATE_FILE);
+    let old: State = fs::read_to_string(&state_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
     let mut wanted: Vec<String> = Vec::with_capacity(active.len());
-    for m in &active {
+    for m in active {
         wanted.push(m.rel_path(&mods_rel)?);
     }
 
@@ -80,7 +131,7 @@ pub fn sync_pack(pack: &LoadedPack, install: &Path, excluded: &HashSet<String>, 
         for _ in 0..WORKERS.min(total.max(1)) {
             let rep = rep.clone();
             let (next, done, failures, warnings) = (&next, &done, &failures, &warnings);
-            let (agent, active, wanted) = (&agent, &active, &wanted);
+            let (agent, wanted) = (&agent, &wanted);
             scope.spawn(move || {
                 let mut archive = pack.archive().ok().flatten();
                 loop {
@@ -122,7 +173,7 @@ pub fn sync_pack(pack: &LoadedPack, install: &Path, excluded: &HashSet<String>, 
     let mut applied = 0usize;
     if let Some(mut ar) = pack.archive()? {
         // Multiple possible folders (e.g. Modrinth: overrides/ and client-overrides/); later ones override earlier ones.
-        for dir in pack.override_dirs() {
+        for dir in override_dirs {
             let prefix = format!("{}{}", pack.root(), dir);
             for i in 0..ar.len() {
                 let mut f = ar.by_index(i)?;
@@ -131,7 +182,7 @@ pub fn sync_pack(pack: &LoadedPack, install: &Path, excluded: &HashSet<String>, 
                 }
                 let name = f.name().to_string();
                 let Some(rel) = name.strip_prefix(&prefix) else { continue };
-                if rel.is_empty() {
+                if rel.is_empty() || (server && client_only_file(rel)) {
                     continue;
                 }
                 let target = util::safe_join(install, rel)?;
