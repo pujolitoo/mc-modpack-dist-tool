@@ -40,6 +40,44 @@ names, when the server shares them), latency, version and MOTD; it refreshes eve
 **Join automatically when clicking PLAY** enabled, PLAY starts Minecraft and joins that server directly (Quick Play on
 1.20+, `--server/--port` on older versions). Addresses without a port use 25565 or the domain's SRV record.
 
+## Dedicated server: syncing its mods
+
+The same executable keeps a dedicated server in sync with the modpack, without opening a window:
+
+```
+modpack-launcher --sync-server <server folder> [--no-config]
+```
+
+It gets the modpack from the same place as the launcher (`launcher.toml`) and, in the server folder:
+
+- installs the mods that run on a server (and the server-only ones), skipping the client-only ones;
+- removes the mods **it** installed before that are no longer in the modpack (mods you added by hand are kept);
+- applies the modpack configuration (overrides) like the launcher does for players: only files that are missing, or
+  all of them when the modpack version changes. Client-only files (`options.txt`, `servers.dat`, shader and resource
+  packs) are skipped, and Modrinth `server-overrides/` is used instead of `client-overrides/`. `--no-config` skips
+  the configuration entirely.
+
+Output is printed and saved to `<server folder>/modpack-sync.log`. Run it in the server start script, before Forge,
+so every restart picks up the latest modpack:
+
+```bash
+# run.sh (Linux)
+./modpack-launcher --sync-server . || exit 1
+# …the usual Forge command (java @user_jvm_args.txt @libraries/…/unix_args.txt nogui)
+```
+
+```bat
+rem run.bat (Windows)
+start /wait "" modpack-launcher.exe --sync-server .
+if errorlevel 1 exit /b 1
+rem …the usual Forge command
+```
+
+Which mods are client-only comes from the modpack data (Modrinth reports it; for CurseForge and local JARs the side is
+unknown and the mod is installed on the server). Make sure client-only mods are marked as such, or the server will
+fail to start. Forge itself must be installed on the server once (with the Forge installer). The Linux build needs
+the GTK 3 libraries (`libgtk-3-0`), also on a server.
+
 ## Custom authentication server
 Players can sign in with accounts of **your own authentication server** instead of (or besides) Microsoft accounts.
 Any server implementing the Yggdrasil API used by authlib-injector works, for example
